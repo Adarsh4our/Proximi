@@ -19,50 +19,122 @@ Item {
         }
     }
 
-    // ── Full-size Image Grid ─────────────────────────────────────────
-    GridView {
-        id: groupGrid
+    // Fix: refresh when view becomes visible (Group 1 wasn't rendering
+    // because data arrived while the view was still hidden)
+    onVisibleChanged: {
+        if (visible && typeof groupGrid !== "undefined") {
+            groupGrid.updateModel()
+        }
+    }
+
+    // ── Main Layout ─────────────────────────────────────────
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.gridSpacing
-        clip: true
+        spacing: 0
 
-        cellWidth: Theme.thumbnailSize + Theme.gridSpacing
-        cellHeight: Theme.thumbnailSize + Theme.gridSpacing
+        GridView {
+            id: groupGrid
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.margins: Theme.gridSpacing
+            clip: true
 
-        // Convert plain JS array to ListModel
-        model: ListModel { id: dynamicModel }
+            cellWidth: Theme.thumbnailSize + Theme.gridSpacing
+            cellHeight: Theme.thumbnailSize + Theme.gridSpacing
 
-        Component.onCompleted: updateModel()
+            // Convert plain JS array to ListModel
+            model: ListModel { id: dynamicModel }
 
-        function updateModel() {
-            dynamicModel.clear()
-            if (hasData) {
-                var imgs = reviewRoot.currentGroup.images
-                for (var i = 0; i < imgs.length; i++) {
-                    dynamicModel.append(imgs[i])
+            Component.onCompleted: updateModel()
+
+            function updateModel() {
+                dynamicModel.clear()
+                if (hasData) {
+                    var imgs = reviewRoot.currentGroup.images
+                    for (var i = 0; i < imgs.length; i++) {
+                        dynamicModel.append(imgs[i])
+                    }
+                }
+            }
+
+            delegate: ImageCard {
+                width: groupGrid.cellWidth - Theme.gridSpacing
+                height: groupGrid.cellHeight - Theme.gridSpacing
+                thumbnailSource: model.thumbnailPath || ""
+                fileName: model.fileName || ""
+                imageId: model.imageId || -1
+                
+                onRequestPreview: {
+                    if (typeof previewModal !== "undefined") {
+                        previewModal.openPreview(model.originalPath)
+                    }
+                }
+            }
+
+            ScrollBar.vertical: ScrollBar {
+                id: vbar
+                policy: ScrollBar.AsNeeded
+                hoverEnabled: true
+                
+                background: Item {}
+                
+                contentItem: Rectangle {
+                    implicitWidth: vbar.pressed || vbar.hovered ? 8 : 2
+                    radius: width / 2
+                    color: Theme.textDisabled
+                    opacity: vbar.pressed || vbar.hovered ? 0.8 : 0.4
+                    
+                    Behavior on implicitWidth { NumberAnimation { duration: 150 } }
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                }
+            }
+            
+            // Smooth scrolling
+            flickDeceleration: 3000
+            maximumFlickVelocity: 4000
+        }
+
+        // Action Bar for cleanup operations
+        ActionBar {
+            Layout.fillWidth: true
+            visible: !(typeof similarityController !== "undefined" && similarityController.reviewComplete)
+        }
+    }
+    
+    // Complete State Overlay
+    ReviewCompleteState {
+        anchors.fill: parent
+        visible: typeof similarityController !== "undefined" && similarityController.reviewComplete
+        z: 50
+    }
+    
+    ImagePreviewModal {
+        id: previewModal
+        anchors.fill: parent
+        z: 100 // Ensure it's on top
+    }
+
+    // Keyboard Shortcuts at the view level
+    Item {
+        focus: true // Capture keys when view has focus
+        Keys.onPressed: (event) => {
+            if (typeof similarityController === "undefined" || typeof cleanupController === "undefined") return;
+
+            if (event.key === Qt.Key_Right || event.key === Qt.Key_D) {
+                similarityController.nextGroup()
+                event.accepted = true
+            } else if (event.key === Qt.Key_Left || event.key === Qt.Key_A) {
+                similarityController.previousGroup()
+                event.accepted = true
+            } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
+                cleanupController.undoLastCleanup()
+                event.accepted = true
+            } else if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
+                if (event.modifiers & Qt.ControlModifier) {
+                    cleanupController.executeCleanup()
+                    event.accepted = true
                 }
             }
         }
-
-        delegate: ImageCard {
-            width: groupGrid.cellWidth - Theme.gridSpacing
-            height: groupGrid.cellHeight - Theme.gridSpacing
-            thumbnailSource: model.thumbnailPath || ""
-            fileName: model.fileName || ""
-        }
-
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-            contentItem: Rectangle {
-                implicitWidth: 6
-                radius: 3
-                color: Theme.textDisabled
-                opacity: 0.5
-            }
-        }
-
-        // Smooth scrolling
-        flickDeceleration: 3000
-        maximumFlickVelocity: 4000
     }
 }

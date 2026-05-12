@@ -40,6 +40,18 @@ ApplicationWindow {
         function onScanFinished(totalProcessed) {
             console.log("Scan finished: " + totalProcessed + " images")
         }
+
+        function onDuplicateRemovalFinished(removedPaths) {
+            console.log("Duplicate removal finished, removed " + removedPaths.length + " exact duplicates.")
+            if (removedPaths.length > 0) {
+                // Reload the model to reflect the removed images
+                imageListModel.clear()
+                var images = scanController.getStoredImages()
+                for (var i = 0; i < images.length; i++) {
+                    imageListModel.append(images[i])
+                }
+            }
+        }
     }
 
     // ── Startup initialization ───────────────────────────────────────
@@ -78,12 +90,18 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 0
 
+            // Derived state for sidebar visibility
+            property bool inGroupReview: typeof similarityController !== "undefined"
+                                         && similarityController.similarityState === "ready"
+
             Sidebar {
-                Layout.preferredWidth: 200
+                visible: parent.inGroupReview
+                Layout.preferredWidth: parent.inGroupReview ? 200 : 0
                 Layout.fillHeight: true
             }
 
             Rectangle {
+                visible: parent.inGroupReview
                 Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 color: Theme.border
@@ -120,5 +138,10 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.preferredHeight: 28
         }
+    }
+
+    // Settings panel overlay — renders on top of everything
+    SettingsPanel {
+        anchors.fill: parent
     }
 }

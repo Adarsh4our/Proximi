@@ -19,6 +19,7 @@ class SimilarityController(QObject):
     groupCountChanged = Signal()
     currentGroupIndexChanged = Signal()
     currentGroupDataChanged = Signal()
+    reviewCompleteChanged = Signal()
 
     def __init__(self, 
                  hash_service: HashService, 
@@ -26,12 +27,14 @@ class SimilarityController(QObject):
                  grouping_service: GroupingService,
                  group_repository: GroupRepository,
                  debug_service: DebugService = None,
+                 settings_controller = None,
                  parent=None):
         super().__init__(parent)
         self._hash_service = hash_service
         self._similarity_service = similarity_service
         self._grouping_service = grouping_service
         self._group_repository = group_repository
+        self._settings_controller = settings_controller
         self._debug_service = debug_service
         
         self._similarity_state = "idle"  # idle | processing | ready
@@ -40,9 +43,14 @@ class SimilarityController(QObject):
         self._group_count = 0
         self._current_group_index = 0
         self._groups_cache = []          # Loaded groups for review
+        self._review_complete = False
         self._worker = None
 
     # ── Properties ────────────────────────────────────────────────────
+
+    @Property(bool, notify=reviewCompleteChanged)
+    def reviewComplete(self) -> bool:
+        return self._review_complete
 
     @Property(str, notify=similarityStateChanged)
     def similarityState(self) -> str:
@@ -92,12 +100,27 @@ class SimilarityController(QObject):
         # Assuming latest scan session ID is 1 for now (could be fetched from ScanController)
         session_id = 1 
         
+        # Read thresholds from settings controller
+        phash_t = 12
+        ssim_t = 0.55
+        dhash_t = 18
+        hist_t = 0.30
+        if self._settings_controller:
+            phash_t = self._settings_controller.phashThreshold
+            ssim_t = self._settings_controller.ssimThreshold
+            dhash_t = self._settings_controller.dhashThreshold
+            hist_t = self._settings_controller.histogramThreshold
+
         self._worker = SimilarityWorker(
             self._hash_service,
             self._similarity_service,
             self._grouping_service,
             self._group_repository,
-            session_id
+            session_id,
+            phash_threshold=phash_t,
+            ssim_threshold=ssim_t,
+            dhash_threshold=dhash_t,
+            histogram_threshold=hist_t
         )
         self._worker.signals.phase_changed.connect(self._on_phase_changed)
         self._worker.signals.progress.connect(self._on_progress)
@@ -113,10 +136,12 @@ class SimilarityController(QObject):
         self._groups_cache = self._group_repository.get_all_groups()
         self._group_count = len(self._groups_cache)
         self._current_group_index = 0
+        self._review_complete = False
         
         self.groupCountChanged.emit()
         self.currentGroupIndexChanged.emit()
         self.currentGroupDataChanged.emit()
+        self.reviewCompleteChanged.emit()
 
     @Slot()
     def nextGroup(self):
@@ -124,9 +149,16 @@ class SimilarityController(QObject):
             self._current_group_index += 1
             self.currentGroupIndexChanged.emit()
             self.currentGroupDataChanged.emit()
+        else:
+            self._review_complete = True
+            self.reviewCompleteChanged.emit()
 
     @Slot()
     def previousGroup(self):
+        if self._review_complete:
+            self._review_complete = False
+            self.reviewCompleteChanged.emit()
+            
         if self._current_group_index > 0:
             self._current_group_index -= 1
             self.currentGroupIndexChanged.emit()
@@ -148,6 +180,12 @@ class SimilarityController(QObject):
         self.currentGroupIndexChanged.emit()
         self.currentGroupDataChanged.emit()
 
+    @Slot()
+    def skipGroup(self):
+        """Skip current group without performing cleanup."""
+        if self._current_group_index < self._group_count - 1:
+            self.nextGroup()
+
     @Slot(result=dict)
     def getCurrentGroupData(self) -> dict:
         """Returns the current group's data including formatted image view-models."""
@@ -163,7 +201,7 @@ class SimilarityController(QObject):
             if not img:
                 logger.error(f"GroupMember {member.id} has no associated image loaded!")
                 continue
-            vm = ImageViewModel.from_raw(img.original_path, img.thumbnail_path, img.file_name)
+            vm = ImageViewModel.from_image(img)
             images_data.append(vm)
             
         payload = {

@@ -34,33 +34,114 @@ Rectangle {
             color: Theme.border
         }
 
-        // Folder path — shown once a folder has been scanned
-        Text {
-            id: folderPathText
-            property string fullPath: typeof scanController !== "undefined" ? scanController.currentFolder : ""
-            visible: hasScanned || isScanning
-            text: {
-                if (!fullPath || fullPath === "") return ""
-                var parts = fullPath.replace(/\\/g, "/").split("/")
-                if (parts.length > 2) {
-                    return "📂 .../" + parts.slice(-2).join("/")
+        // ── "All Photos" pill — shown after scan ─────────────────────
+        Rectangle {
+            visible: (hasScanned || isScanning) && !isInGroupReview
+            Layout.preferredHeight: 28
+            Layout.preferredWidth: allPhotosRow.width + 20
+            radius: 14
+            color: Theme.accent
+
+            property bool isInGroupReview: typeof similarityController !== "undefined"
+                                           && similarityController.similarityState === "ready"
+
+            Row {
+                id: allPhotosRow
+                anchors.centerIn: parent
+                spacing: 6
+
+                Text {
+                    text: "🖼"
+                    font.pixelSize: 12
+                    anchors.verticalCenter: parent.verticalCenter
                 }
-                return "📂 " + fullPath
+
+                Text {
+                    text: "All Photos"
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontSmall
+                    font.bold: true
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Rectangle {
+                    visible: typeof scanController !== "undefined" && scanController.scannedCount > 0
+                    width: pillCountText.implicitWidth + 10
+                    height: 18
+                    radius: 9
+                    color: Theme.accentHover
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: pillCountText
+                        anchors.centerIn: parent
+                        text: typeof scanController !== "undefined" ? scanController.scannedCount : "0"
+                        color: Theme.textPrimary
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+                }
             }
-            color: Theme.textSecondary
-            font.pixelSize: Theme.fontSmall
-            elide: Text.ElideMiddle
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignVCenter
         }
 
-        // Spacer when folder path is hidden
+        // ── Folder path chip — styled breadcrumb ─────────────────────
+        Rectangle {
+            id: folderChip
+            visible: hasScanned || isScanning
+            Layout.preferredHeight: 28
+            Layout.preferredWidth: folderChipRow.width + 16
+            radius: 14
+            color: Theme.bgHover
+
+            property string fullPath: typeof scanController !== "undefined" ? scanController.currentFolder : ""
+
+            Row {
+                id: folderChipRow
+                anchors.centerIn: parent
+                spacing: 5
+
+                Text {
+                    text: "📂"
+                    font.pixelSize: 11
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    text: {
+                        if (!folderChip.fullPath || folderChip.fullPath === "") return ""
+                        var parts = folderChip.fullPath.replace(/\\/g, "/").split("/")
+                        if (parts.length > 2) {
+                            // Show last 2 segments as breadcrumb
+                            return parts[parts.length - 2] + " › " + parts[parts.length - 1]
+                        }
+                        return parts[parts.length - 1]
+                    }
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontSmall
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            ToolTip {
+                visible: folderChipMouse.containsMouse
+                text: folderChip.fullPath
+                delay: 400
+            }
+
+            MouseArea {
+                id: folderChipMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+            }
+        }
+
+        // Spacer
         Item {
-            visible: !hasScanned && !isScanning
             Layout.fillWidth: true
         }
 
-        // ── Action buttons (only visible after scan is complete or during scan) ──
+        // ── Action buttons ───────────────────────────────────────────
 
         // Change Folder button
         Button {
@@ -120,6 +201,42 @@ Rectangle {
             }
         }
 
+        // Clean Exact Duplicates button
+        Button {
+            id: cleanDuplicatesBtn
+            property bool isRemoving: typeof scanController !== "undefined" && scanController.isRemovingDuplicates
+            property int progress: typeof scanController !== "undefined" ? scanController.duplicateProgress : 0
+            
+            text: isRemoving ? "Cleaning... " + progress + "%" : "Clean Exact Duplicates"
+            visible: isLoaded
+            enabled: !isRemoving && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
+
+            onClicked: {
+                if (typeof scanController !== "undefined") {
+                    scanController.removeExactDuplicates()
+                }
+            }
+
+            background: Rectangle {
+                color: {
+                    if (!cleanDuplicatesBtn.enabled) return Theme.bgApp
+                    return cleanDuplicatesBtn.hovered ? Theme.bgHover : "transparent"
+                }
+                border.color: Theme.border
+                border.width: 1
+                radius: Theme.radiusS
+                Behavior on color { ColorAnimation { duration: 150 } }
+            }
+            contentItem: Text {
+                text: "🧹 " + cleanDuplicatesBtn.text
+                color: cleanDuplicatesBtn.enabled ? Theme.textPrimary : Theme.textDisabled
+                font.pixelSize: Theme.fontSmall
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+
         // Find Similar button
         Button {
             id: similarButton
@@ -155,12 +272,29 @@ Rectangle {
             Layout.preferredWidth: Theme.spaceS
         }
 
-        // Settings icon placeholder
-        Text {
-            text: "⚙"
-            color: Theme.textSecondary
-            font.pixelSize: Theme.fontTitle
+        // Settings icon button
+        Rectangle {
+            width: 32; height: 32; radius: 16
+            color: settingsIconMouse.containsMouse ? Theme.bgHover : "transparent"
             Layout.alignment: Qt.AlignVCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: "⚙"
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontTitle
+            }
+
+            MouseArea {
+                id: settingsIconMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (typeof settingsController !== "undefined")
+                        settingsController.toggleSettingsPanel()
+                }
+            }
         }
     }
 }

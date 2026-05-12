@@ -5,6 +5,8 @@ from pathlib import Path
 
 from app.services.scan_service import ScanService
 from app.services.scan_worker import ScanWorker
+from app.services.duplicate_worker import DuplicateWorker
+from app.services.duplicate_service import DuplicateService
 from app.services.debug_service import DebugService
 from app.database.image_repository import ImageRepository
 from app.utils.logger import logger
@@ -17,6 +19,19 @@ class ImageViewModel:
     - Filesystem path to URI conversion (prevents QML file:/// hacks)
     - Formatting raw data for QML consumption
     """
+    
+    @staticmethod
+    def from_image(img) -> dict:
+        return {
+            "imageId": img.id,
+            "originalPath": Path(img.original_path).resolve().as_uri() if img.original_path else "",
+            "thumbnailPath": Path(img.thumbnail_path).resolve().as_uri() if img.thumbnail_path else "",
+            "fileName": img.file_name,
+            "width": img.width or 0,
+            "height": img.height or 0,
+            "fileSize": img.file_size or 0,
+            "modifiedAt": img.modified_at.timestamp() if img.modified_at else 0
+        }
     
     @staticmethod
     def from_raw(original_path: str, thumbnail_path: str, file_name: str) -> dict:
@@ -45,9 +60,17 @@ class ScanController(QObject):
     imageReady = Signal(str, str, str)  # original_path, thumbnail_path, file_name
     scanFinished = Signal(int)          # total processed
 
-    def __init__(self, scan_service: ScanService, image_repository: ImageRepository, debug_service: DebugService = None, parent=None):
+    # Duplicate Removal Signals
+    duplicateRemovalStarted = Signal()
+    duplicateRemovalProgress = Signal(int)
+    duplicateRemovalFinished = Signal(list) # list of removed original_paths
+    duplicateRemovalError = Signal(str)
+    isRemovingDuplicatesChanged = Signal()
+
+    def __init__(self, scan_service: ScanService, duplicate_service: DuplicateService, image_repository: ImageRepository, debug_service: DebugService = None, parent=None):
         super().__init__(parent)
         self._scan_service = scan_service
+        self._duplicate_service = duplicate_service
         self._image_repository = image_repository
         self._debug_service = debug_service
         self._current_folder = ""
@@ -57,6 +80,9 @@ class ScanController(QObject):
         self._total_images = 0
         self._has_scanned_current_folder = False
         self._worker = None
+        self._duplicate_worker = None
+        self._is_removing_duplicates = False
+        self._duplicate_progress = 0
 
     # ── Properties (exposed to QML) ───────────────────────────────────
 
@@ -84,6 +110,14 @@ class ScanController(QObject):
     def hasScannedCurrentFolder(self) -> bool:
         return self._has_scanned_current_folder
 
+    @Property(bool, notify=isRemovingDuplicatesChanged)
+    def isRemovingDuplicates(self) -> bool:
+        return self._is_removing_duplicates
+
+    @Property(int, notify=duplicateRemovalProgress)
+    def duplicateProgress(self) -> int:
+        return self._duplicate_progress
+
     # ── Slots (callable from QML) ─────────────────────────────────────
 
     @Slot()
@@ -93,6 +127,7 @@ class ScanController(QObject):
             None,
             "Select Image Folder",
             "",
+            QFileDialog.Option.DontUseNativeDialog   # Shows files inside folders for better UX
         )
         if folder:
             if self._current_folder != folder:
@@ -112,6 +147,10 @@ class ScanController(QObject):
         if self._scan_state == "scanning":
             logger.warning("Scan already in progress.")
             return
+
+        # Clear the database before starting a new scan to prevent mixing images from old folders
+        from app.database.connection import db
+        db.clear_database()
 
         # Reset progress state
         self._scan_state = "scanning"
@@ -134,6 +173,27 @@ class ScanController(QObject):
         # Submit to thread pool
         QThreadPool.globalInstance().start(self._worker)
         logger.info(f"Scan started for '{self._current_folder}'")
+
+    @Slot()
+    def removeExactDuplicates(self):
+        """Finds and removes exact duplicates in the background."""
+        if self._is_removing_duplicates:
+            logger.warning("Duplicate removal already in progress.")
+            return
+
+        self._is_removing_duplicates = True
+        self._duplicate_progress = 0
+        self.isRemovingDuplicatesChanged.emit()
+        self.duplicateRemovalProgress.emit(0)
+        self.duplicateRemovalStarted.emit()
+
+        self._duplicate_worker = DuplicateWorker(self._duplicate_service)
+        self._duplicate_worker.signals.progress.connect(self._on_duplicate_progress)
+        self._duplicate_worker.signals.finished.connect(self._on_duplicate_finished)
+        self._duplicate_worker.signals.error.connect(self._on_duplicate_error)
+
+        QThreadPool.globalInstance().start(self._duplicate_worker)
+        logger.info("Duplicate removal started.")
 
     @Slot(result=int)
     def getStoredImageCount(self):
@@ -194,3 +254,29 @@ class ScanController(QObject):
             self._debug_service.scan_completed()
         self.scanStateChanged.emit()
         logger.error(f"Scan error: {error_msg}")
+
+    # ── Duplicate Removal Handlers ────────────────────────────────────
+
+    def _on_duplicate_progress(self, current: int, total: int):
+        self._duplicate_progress = current
+        self.duplicateRemovalProgress.emit(current)
+
+    def _on_duplicate_finished(self, removed_paths: list):
+        self._is_removing_duplicates = False
+        self._duplicate_worker = None
+        self.isRemovingDuplicatesChanged.emit()
+        self.duplicateRemovalFinished.emit(removed_paths)
+        
+        # Also refresh totalImages and scannedCount to reflect the new state
+        remaining = self._image_repository.get_image_count()
+        self._total_images = remaining
+        self._scanned_count = remaining
+        self.totalImagesChanged.emit()
+        self.scannedCountChanged.emit()
+
+    def _on_duplicate_error(self, error_msg: str):
+        self._is_removing_duplicates = False
+        self._duplicate_worker = None
+        self.isRemovingDuplicatesChanged.emit()
+        self.duplicateRemovalError.emit(error_msg)
+        logger.error(f"Duplicate removal error: {error_msg}")

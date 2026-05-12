@@ -48,12 +48,20 @@ Rectangle {
         flickableDirection: Flickable.VerticalFlick
 
         ScrollBar.vertical: ScrollBar {
+            id: vbar
             policy: ScrollBar.AsNeeded
+            hoverEnabled: true
+            
+            background: Item {} // Remove default thick track
+            
             contentItem: Rectangle {
-                implicitWidth: 4
-                radius: 2
+                implicitWidth: vbar.pressed || vbar.hovered ? 8 : 2
+                radius: width / 2
                 color: Theme.textDisabled
-                opacity: 0.4
+                opacity: vbar.pressed || vbar.hovered ? 0.8 : 0.4
+                
+                Behavior on implicitWidth { NumberAnimation { duration: 150 } }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
             }
         }
 

@@ -13,12 +13,18 @@ Rectangle {
         spacing: Theme.spaceS
 
         Text {
-            text: typeof scanController !== "undefined" && scanController.scanState === "scanning"
+            text: {
+                if (toastTimer.running) return toastText
+                return typeof scanController !== "undefined" && scanController.scanState === "scanning"
                   ? "Scanning..."
                   : "Ready"
-            color: Theme.textSecondary
+            }
+            color: toastTimer.running ? Theme.accent : Theme.textSecondary
             font.pixelSize: Theme.fontCaption
+            font.bold: toastTimer.running
             Layout.alignment: Qt.AlignVCenter
+            
+            Behavior on color { ColorAnimation { duration: 150 } }
         }
 
         Item {
@@ -34,6 +40,22 @@ Rectangle {
             color: Theme.textMuted
             font.pixelSize: Theme.fontCaption
             Layout.alignment: Qt.AlignVCenter
+        }
+    }
+    
+    property string toastText: ""
+    
+    Timer {
+        id: toastTimer
+        interval: 2000
+        repeat: false
+    }
+    
+    Connections {
+        target: typeof cleanupController !== "undefined" ? cleanupController : null
+        function onActionCompleted(msg) {
+            toastText = msg
+            toastTimer.restart()
         }
     }
 }

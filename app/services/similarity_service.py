@@ -17,12 +17,18 @@ class SimilarityService:
         self._debug_service = debug_service
 
     def find_similar_pairs(self, 
-                           candidate_threshold: int = 7, 
+                           candidate_threshold: int = 12,
+                           ssim_threshold: float = 0.55,
+                           dhash_threshold: int = 18,
+                           histogram_threshold: float = 0.30,
                            on_progress: Callable[[int, int], None] = None, 
                            is_cancelled: Callable[[], bool] = None) -> List[Tuple[int, int, float]]:
         """
         Returns list of (image_id_a, image_id_b, final_score) pairs.
         candidate_threshold: Max pHash Hamming distance for Phase 1.
+        ssim_threshold: Min composite SSIM score for Phase 2 acceptance.
+        dhash_threshold: Max dHash Hamming distance before rejection.
+        histogram_threshold: Min histogram intersection before rejection.
         """
         images = self._image_repository.get_all_hashed_images()
         total_images = len(images)
@@ -85,17 +91,17 @@ class SimilarityService:
                 if img_a.width and img_a.height and img_b.width and img_b.height:
                     ar_a = img_a.width / img_a.height
                     ar_b = img_b.width / img_b.height
-                    if abs(ar_a - ar_b) / min(ar_a, ar_b) > 0.2:
-                        continue  # Aspect ratios differ by >20%
+                    if abs(ar_a - ar_b) / min(ar_a, ar_b) > 0.3:
+                        continue  # Aspect ratios differ by >30%
                 
                 # 2. dHash check
                 dh_distance = dh_a - dh_b if dh_a and dh_b else None
-                if dh_distance is not None and dh_distance > 12:
+                if dh_distance is not None and dh_distance > dhash_threshold:
                     continue  # dHash differs significantly
                 
                 # 3. Histogram Similarity
                 hist_score = self._compute_histogram_similarity(img_a, img_b)
-                if hist_score < 0.4:
+                if hist_score < histogram_threshold:
                     continue  # Very low color distribution match
                 
                 # 4. SSIM
@@ -112,7 +118,7 @@ class SimilarityService:
                     composite_score -= 0.05
                     
                 # Strict SSIM threshold: > 0.85 raw is highly similar
-                if composite_score >= 0.82:
+                if composite_score >= ssim_threshold:
                     final_pairs.append((img_a.id, img_b.id, composite_score))
                     logger.debug(f"ACCEPTED PAIR: A={img_a.id}, B={img_b.id} | "
                                  f"pHash={ph_distance}, dHash={dh_distance}, "
@@ -122,9 +128,10 @@ class SimilarityService:
             except Exception as e:
                 logger.error(f"Failed to refine similarity for pair ({img_a.id}, {img_b.id}): {e}")
                 
-            if on_progress:
-                progress_pct = 50 + int((i / max(1, total_candidates)) * 50)
-                on_progress(progress_pct, 100)
+            finally:
+                if on_progress:
+                    progress_pct = 50 + int((i / max(1, total_candidates)) * 50)
+                    on_progress(progress_pct, 100)
                 
         logger.info(f"Phase 2 complete: {len(final_pairs)} pairs passed refinement.")
         return final_pairs
@@ -162,13 +169,17 @@ class SimilarityService:
                 gray_a = pil_a.convert('L')
                 gray_b = pil_b.convert('L')
                 
-                if gray_a.size != gray_b.size:
-                    gray_b = gray_b.resize(gray_a.size)
-                    
+                # Optimization: Resize to a small fixed size to make SSIM extremely fast.
+                # SSIM on large images across thousands of pairs is a huge bottleneck.
+                target_size = (64, 64)
+                gray_a = gray_a.resize(target_size, PILImage.Resampling.BILINEAR)
+                gray_b = gray_b.resize(target_size, PILImage.Resampling.BILINEAR)
+                
                 np_a = np.array(gray_a)
                 np_b = np.array(gray_b)
                 
-                score, _ = ssim(np_a, np_b, full=True)
+                # data_range=255 is important for 8-bit grayscale arrays
+                score, _ = ssim(np_a, np_b, full=True, data_range=255)
                 # Return RAW score (no normalization)
                 return float(score)
                 

@@ -40,4 +40,13 @@ class DatabaseConnection:
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
 
+    def clear_database(self):
+        """Drops all tables and recreates them to start fresh."""
+        try:
+            Base.metadata.drop_all(bind=self.engine)
+            Base.metadata.create_all(bind=self.engine)
+            logger.info("Database cleared and recreated successfully.")
+        except Exception as e:
+            logger.error(f"Failed to clear database: {e}")
+
 db = DatabaseConnection()

@@ -25,13 +25,43 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# Proximi local data
-data/
+# Proximi local runtime data
+data/thumbnails/
+data/trash/
+data/logs/
+data/cache/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Keep the data directory itself tracked (for .gitkeep)
+!data/.gitkeep
+
+# Database files anywhere
 *.db
+*.db-shm
+*.db-wal
 
 # Logs
 *.log
+logs/
 
 # Environment
 .env
 .env.local
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# MyPy
+.mypy_cache/
+
+# Type stubs
+*.pyi
+
+# Local testing data
+test/
+test-2/
+my.md

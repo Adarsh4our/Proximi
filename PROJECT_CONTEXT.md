@@ -1,51 +1,85 @@
 # Proximi Project Context
 
 ## Current Milestone
-**Milestone 3 — Similarity Engine & Grouping System**
-Focus: CPU-bound classical CV pipeline (pHash/dHash), SSIM refinement, NetworkX connected-components grouping, similarity background worker, and GroupReview UI.
+**Milestone 5 — Exact Duplicate Removal**  
+Focus: Enhancing the Proximi photo management engine by adding a dedicated tool for identifying and removing exact duplicates immediately after a folder scan. Identifies identical photos to keep the highest-quality version.
+
+---
 
 ## Architecture Overview
-- **UI:** Qt Quick / QML
-- **Backend Bridge:** PySide6
-- **Database:** SQLite
-- **ORM:** SQLAlchemy
-- **Thumbnail Engine:** Pillow
-- **Async Pattern:** QThreadPool + QRunnable
-- **Pattern:** Layered architecture (UI -> Controllers -> Services -> Database/Repository)
 
-- Python 3
-- PySide6
-- SQLAlchemy
-- QML
-- Pillow
-- imagehash
-- scikit-image
-- networkx
-- scipy & numpy
+| Layer | Technology |
+|-------|-----------|
+| UI | Qt Quick / QML |
+| Backend Bridge | PySide6 |
+| Database | SQLite via SQLAlchemy |
+| Thumbnail Engine | Pillow |
+| Async Pattern | QThreadPool + QRunnable |
+| CV Pipeline | imagehash, scikit-image, networkx |
+| Architecture | Layered (UI → Controllers → Services → Repository) |
+
+**Python Dependencies:**  
+`Python 3.11+`, `PySide6`, `SQLAlchemy`, `Pillow`, `imagehash`, `scikit-image`, `networkx`, `scipy`, `numpy`, `psutil`
+
+---
 
 ## Folder Structure
-- `app/ui/qml/`: QML UI components and themes
-- `app/ui/qml/components/`: Reusable QML components (TopBar, Sidebar, ContentArea, Footer, ImageCard, EmptyState, LoadingView)
-- `app/ui/qml/themes/`: Theme singleton (colors, spacing, typography, grid tokens)
-- `app/controllers/`: QObject bridges between QML and Python services
-- `app/services/`: Business logic — scanning, thumbnails, settings
-- `app/database/`: SQLite connection, repository layer
-- `app/models/`: SQLAlchemy ORM models (Image, ScanSession)
-- `app/utils/`: Utilities (logging)
-- `data/`: Local storage (thumbnails, trash, cache, logs, db)
 
-## Coding Standards
-- Python: Type hints, meaningful naming, composition over inheritance, isolated logic.
-- QML: Presentation logic only, reusable components, clean layouts.
-- Architecture: No global state, QML talks to Python via QObject/Signals/Slots.
-- Controllers: Modular — ScanController handles scan lifecycle, AppController stays lightweight.
+```
+app/
+├── controllers/
+│   ├── app_controller.py
+│   ├── scan_controller.py          # Scan lifecycle + ImageViewModel
+│   ├── similarity_controller.py    # Similarity pipeline + group review
+│   ├── cleanup_controller.py       # Selection state + cleanup execution
+│   └── debug_controller.py
+├── services/
+│   ├── scan_service.py
+│   ├── scan_worker.py
+│   ├── thumbnail_service.py
+│   ├── hash_service.py
+│   ├── duplicate_service.py        # Exact duplicate detection logic
+│   ├── duplicate_worker.py         # Async exact duplicate worker
+│   ├── similarity_service.py
+│   ├── grouping_service.py
+│   ├── similarity_worker.py
+│   ├── trash_service.py            # Move-to-trash + restore logic
+│   ├── folder_service.py
+│   └── debug_service.py
+├── database/
+│   ├── connection.py
+│   ├── base.py                     # Declarative base
+│   ├── migration.py
+│   ├── image_repository.py
+│   ├── group_repository.py
+│   └── trash_repository.py         # Trash record CRUD
+├── models/
+│   ├── image.py
+│   ├── scan_session.py
+│   ├── group.py
+│   ├── group_member.py
+│   └── trash_record.py             # New in M4
+└── ui/qml/
+    ├── Main.qml
+    ├── themes/Theme.qml
+    └── components/
+        ├── TopBar.qml
+        ├── Sidebar.qml
+        ├── ContentArea.qml
+        ├── Footer.qml              # Toast notifications
+        ├── EmptyState.qml
+        ├── ImageCard.qml           # Selection states (keeper/rejected)
+        ├── GroupReviewView.qml     # Main review + keyboard shortcuts
+        ├── ActionBar.qml           # Cleanup action buttons
+        ├── ImagePreviewModal.qml   # Fullscreen lightbox (F key)
+        └── ReviewCompleteState.qml # End-of-review summary screen
+data/
+├── thumbnails/
+├── trash/                          # App-managed trash (not OS trash)
+└── proximi.db
+```
 
-## Agent Rules
-- QML files must contain presentation/UI logic ONLY.
-- Python backend handles state, logic, and db operations.
-- Do not overengineer (no DI frameworks, plugin systems, Redux-like systems).
-- Evolve incrementally.
-- Do not create directories/modules until they are needed by the current milestone.
+---
 
 ## Database Tables
 
@@ -63,9 +97,19 @@ Focus: CPU-bound classical CV pipeline (pHash/dHash), SSIM refinement, NetworkX 
 | modified_at | DateTime | file mtime |
 | thumbnail_path | String | nullable |
 | scan_session_id | Integer | FK → scan_sessions |
-| phash | String | nullable, imagehash |
-| dhash | String | nullable, imagehash |
+| phash | String | nullable |
+| dhash | String | nullable |
 | hash_computed_at | DateTime | nullable |
+
+### scan_sessions
+| Column | Type | Notes |
+|--------|------|-------|
+| id | Integer | PK, autoincrement |
+| folder_path | String | |
+| started_at | DateTime | auto |
+| completed_at | DateTime | nullable |
+| images_found | Integer | default 0 |
+| status | String | in_progress/completed/failed |
 
 ### groups
 | Column | Type | Notes |
@@ -86,114 +130,227 @@ Focus: CPU-bound classical CV pipeline (pHash/dHash), SSIM refinement, NetworkX 
 | image_id | Integer | FK → images |
 | added_at | DateTime | |
 
-### scan_sessions
+### trash_records *(New — Milestone 4)*
 | Column | Type | Notes |
 |--------|------|-------|
 | id | Integer | PK, autoincrement |
-| folder_path | String | |
-| started_at | DateTime | auto |
-| completed_at | DateTime | nullable |
-| images_found | Integer | default 0 |
-| status | String | in_progress/completed/failed |
+| original_path | String | original file location |
+| trash_path | String | unique, location inside `data/trash/` |
+| deleted_at | DateTime | auto (UTC) |
+| restored_at | DateTime | nullable, set on undo/restore |
+| group_id | Integer | FK → groups (nullable) |
+| scan_session_id | Integer | FK → scan_sessions |
+| image_id | Integer | FK → images |
+| batch_id | String | UUID hex, groups records for batch undo |
+
+---
 
 ## Services
 
 ### ScanService
-- Recursive image discovery (.jpg, .jpeg, .png, .webp)
-- Pipeline order: discovery → metadata → DB persist → thumbnail gen → UI update
-- Progress reporting via callbacks
-- Cancellation-aware loop (checks is_cancelled before each image)
+- Recursive image discovery (`.jpg`, `.jpeg`, `.png`, `.webp`)
+- Pipeline: discovery → metadata → DB persist → thumbnail gen → UI update
+- Progress reporting via callbacks; cancellation-aware
 
 ### ThumbnailService
-- Pillow-based thumbnail generation (max 256px, LANCZOS)
-- Deterministic cache keys: SHA256(normalized_path + mtime)
-- Cached to `data/thumbnails/` as WEBP (optimized format)
-- Cache validation via path + mtime hash
+- Pillow thumbnail generation (max 256px, LANCZOS)
+- Deterministic cache keys: `SHA256(normalized_path + mtime)`
+- Cached as WEBP to `data/thumbnails/`
 
 ### HashService
-- Computes perceptual hashes (pHash, dHash) using `imagehash`.
-- Processes incrementally (only unhashed images).
+- Computes perceptual hashes (`pHash`, `dHash`) using `imagehash`
+- Incremental — skips already-hashed images
 
 ### SimilarityService
-- Candidate filtering using pHash Hamming distance (threshold <= 7).
-- Refinement scoring using SSIM via `scikit-image`.
+- Candidate filtering via pHash Hamming distance (threshold ≤ 7)
+- SSIM-based refinement via `scikit-image`
 
 ### GroupingService
-- Builds an adjacency graph of candidates using `networkx`.
-- Clusters via connected components and persists groups (min size 2).
-- Assigns group representative node based on cluster centrality.
+- Adjacency graph via `networkx`; clusters with connected components
+- Persists groups of min size 2; assigns representative node by centrality
 
-### ScanWorker & SimilarityWorker (QRunnable)
-- Run async logic on QThreadPool.
-- Emit signals for progress tracking and UI updates.
-- Support cancellation patterns.
+### DuplicateService *(New — Milestone 5)*
+- Finds exact perceptual duplicates via pHash and dHash
+- Automatically keeps the highest-quality version (largest file size)
+- Moves duplicates directly to `data/trash/` using `TrashService`
+
+### TrashService *(New — Milestone 4)*
+- `move_to_trash(files, batch_id, keeper_id)` — moves files to `data/trash/`
+- Filename collision handling: `original__shortuuid.ext` (readable + unique)
+- **Keeper Protection (Rule 6):** Service-layer check prevents keeper images from being trashed even if UI state has bugs
+- `restore_batch(batch_id)` — restores all files in a batch by batch UUID
+- Returns `(moved_count, freed_bytes)` for feedback messages
+
+### ScanWorker, SimilarityWorker & DuplicateWorker (QRunnable)
+- Async workers on QThreadPool with progress reporting and cancellation support
+
+---
 
 ## Controllers
 
 ### ScanController
-- Folder selection (native QFileDialog)
-- Scan lifecycle management
-- ImageViewModel transformation layer (path → URI conversion)
-- Properties: currentFolder, scanState, scanProgress, scannedCount, totalImages
-- Signals: imageReady, scanFinished
+- Native folder dialog, scan lifecycle management
+- `ImageViewModel.from_image(img)` — enriched view-model including `imageId`, `width`, `height`, `fileSize`, `modifiedAt`
+- `removeExactDuplicates()` — background execution of exact duplicate removal using `DuplicateWorker`
 
 ### SimilarityController
-- Exposes `similarityState`, `currentPhase`, `progress`, `groupCount`, `currentGroupIndex`.
-- UI bridge for launching the similarity pipeline.
-- Exposes formatted group and image view-models to `GroupReviewView`.
+- Orchestrates hashing → similarity → grouping pipeline
+- Group review state: `currentGroupIndex`, `groupCount`, `reviewComplete`
+- `reviewComplete` property: set when user navigates past the last group
+- `skipGroup()` — advance without cleanup action
+
+### CleanupController *(New — Milestone 4)*
+- `selectionState: dict` — `{imageId: "keeper" | "rejected" | "unselected"}`
+- Auto-keeper heuristic on group load: best resolution → largest file → earliest modified
+- `setKeeper(imageId)` — explicit keeper assignment (clears old keeper in group)
+- `toggleSelection(imageId)` — toggle unselected ↔ rejected
+- `selectAllExceptKeeper()` — mark all non-keepers rejected
+- `executeCleanup()` — move rejected images to trash, auto-advance if successful
+- `undoLastCleanup()` — restore last batch, navigate back
+- `actionCompleted(str)` signal — carries feedback message for Footer toast
 
 ### DebugController
-- Toggle visibility (Ctrl+Shift+D)
-- Exposes pre-computed metric snapshot to QML
-- No raw DB models leak into QML
+- Toggle via `Ctrl+Shift+D`
+- Snapshot includes cleanup metrics (`cleanupDeleted`, `cleanupRestored`, `cleanupUndos`)
 
-### AppController
-- General app status (lightweight)
+### DebugService Cleanup Metrics *(New — Milestone 4)*
+- `cleanup_executed(count)` — increments `deleted_count`
+- `undo_executed(count)` — increments `restored_count` and `undo_operations`
 
-### SettingsController
-- Theme management
+---
 
-## Debug Panel
-- **Toggle:** `Ctrl+Shift+D`
-- **Location:** Docked overlay on right edge of content area
-- **Refresh:** 1.5s Timer, only when visible
-- **Metrics Exposed:**
-  - Scan: status, folder, scanned/total/skipped/failed, duration, throughput, session ID
-  - Thumbnails: generated, cache hits, cache misses, failures
-  - Workers: active count, cancellation state
-  - Database: total images, sessions, cached thumbnails
-  - Runtime: RAM usage (via psutil)
+## QML Components
+
+### ImageCard
+- Properties: `thumbnailSource`, `fileName`, `imageId`, `selectionState`
+- States: `unselected` (default) | `keeper` (green border + ✓ badge) | `rejected` (red overlay + ✕ badge)
+- Single click: focus image
+- Double click: `cleanupController.setKeeper(imageId)`
+- Keyboard: `K` = keeper, `X`/`R` = reject, `Space` = toggle reject, `F`/`Enter` = preview
+- Signal: `requestPreview()`
+
+### GroupReviewView
+- Hosts `GridView` + `ActionBar` in `ColumnLayout`
+- Embeds `ImagePreviewModal` (z=100) and `ReviewCompleteState` (z=50)
+- Keyboard shortcuts: `→`/`D` next, `←`/`A` prev, `Ctrl+Z` undo, `Ctrl+Enter` execute cleanup
+
+### ActionBar *(New — Milestone 4)*
+- Buttons: "Reject Others", "Skip", "Execute Cleanup"
+- Hidden when `reviewComplete` is true
+- "Execute Cleanup" disabled when `rejectedCount === 0`
+
+### ImagePreviewModal *(New — Milestone 4)*
+- Fullscreen lightbox overlay (dim background + `Image.PreserveAspectFit`)
+- Open via `openPreview(src)` call; close via `Escape`, `F`, or ✕ button
+- Smooth open/close via `Behavior on opacity`
+
+### ReviewCompleteState *(New — Milestone 4)*
+- Shown when `similarityController.reviewComplete === true`
+- Displays: total groups reviewed, total images cleaned
+- Actions: "Undo Last Action" (if `canUndo`), "Review Again"
+
+### Footer
+- Left: status text — switches to toast message for ~2 seconds after cleanup actions
+- Right: total scanned image count
+- Toast driven by `cleanupController.actionCompleted` signal + `Timer { interval: 2000 }`
+
+### Sidebar (Group Review Mode)
+- Group index, image count, type badge, similarity score
+- Cleanup stats: "Cleaned Images" counter from `debugController.metrics.cleanupDeleted`
+- Navigation: Previous / Next group buttons
+
+---
 
 ## Keyboard Shortcuts
+
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+Shift+D | Toggle debug panel |
+| `Ctrl+Shift+D` | Toggle debug panel |
+| `→` / `D` | Next similarity group |
+| `←` / `A` | Previous similarity group |
+| `K` | Mark focused image as keeper |
+| `X` / `R` | Mark focused image as rejected |
+| `Space` | Toggle reject on focused image |
+| `F` / `Enter` | Open full-screen image preview |
+| `Ctrl+Enter` | Execute cleanup (move rejected to trash) |
+| `Ctrl+Z` | Undo last cleanup batch |
+| `Escape` | Close preview modal |
+
+---
+
+## Coding Standards
+- Python: Type hints, meaningful naming, composition over inheritance, isolated logic.
+- QML: Presentation logic only — zero business logic.
+- Architecture: No global state. QML communicates with Python via QObject / Signals / Slots only.
+- Controllers: Each controller owns one domain (scan, similarity, cleanup, debug).
+- Safety: Destructive operations require explicit intent; reversibility is mandatory.
+
+---
+
+## Agent Rules
+- QML files must contain presentation/UI logic ONLY.
+- Python backend handles state, logic, and DB operations.
+- Do not overengineer (no DI frameworks, plugin systems, Redux-like patterns).
+- Evolve incrementally — do not create modules/directories until the milestone requires them.
+
+---
 
 ## Completed Features
-- Project structure creation
-- SQLite initialization setup
+
+### Milestone 1 — Foundation
+- Project structure and SQLite initialization
 - QML application shell (Main, Sidebar, TopBar, Footer, ContentArea)
 - Folder preparation routines
-- Basic controller and service layer
-- Native folder selection dialog
-- Recursive image scanning (async via QThreadPool)
-- Thumbnail generation and caching (Pillow, WEBP, SHA256)
-- SQLite metadata persistence (images + scan_sessions tables)
-- Progressive thumbnail grid (GridView with clip)
-- Empty/Loading/Loaded UI states
-- ImageViewModel layer (filesystem path → file URI conversion)
-- Internal debug panel with runtime metrics
-- Migration script structure to update DB schema (ALTER TABLE).
-- Group and Hash database schema expansions.
-- Classical CV Similarity Pipeline (pHash, dHash, SSIM refinement).
-- Graph-based clustering (connected components via NetworkX).
-- UI Integration (SimilarityProcessingView, GroupReviewView).
+- Basic controller and service layer scaffolding
 
-## Pending Features
-- Milestone 4: TBD (Likely image manipulation/deduplication actions, UI cleanup)
+### Milestone 2 — Scan & Thumbnail Engine
+- Native folder selection dialog
+- Recursive async image scanning (QThreadPool)
+- Pillow thumbnail generation + WEBP cache (SHA256 keys)
+- SQLite metadata persistence (images + scan_sessions)
+- Progressive thumbnail GridView with scroll
+- Empty / Loading / Loaded UI states
+- ImageViewModel layer (filesystem path → file URI)
+- Internal debug panel with runtime metrics
+- DB migration infrastructure (ALTER TABLE pattern)
+
+### Milestone 3 — Similarity Engine & Grouping
+- pHash + dHash computation via `imagehash`
+- Similarity candidate filtering (Hamming distance ≤ 7)
+- SSIM refinement via `scikit-image`
+- Graph-based clustering via `networkx` connected components
+- Group and GroupMember ORM models
+- GroupRepository CRUD layer
+- SimilarityWorker async pipeline
+- GroupReviewView (thumbnail grid per group)
+- Sidebar group review panel (index, count, type/score)
+- Unified scan workflow (Browse → Start Scan → Rescan)
+
+### Milestone 4 — Cleanup Workflow & Safe Deletion
+- `TrashRecord` ORM model + auto-migration
+- `TrashRepository` (bulk create, batch restore, stats)
+- `TrashService` (move-to-trash, filename collision via `original__uuid.ext`, keeper protection at service layer, batch restore)
+- `CleanupController` (selection state, auto-keeper heuristic, executeCleanup, undoLastCleanup)
+- `ImageCard` selection states (keeper ✓ green border, rejected ✕ red overlay, unselected)
+- `ActionBar` QML component (Reject Others, Skip, Execute Cleanup)
+- `ImagePreviewModal` fullscreen lightbox
+- `ReviewCompleteState` end-of-review summary screen
+- Footer toast notifications after cleanup actions (2s visible)
+- Keyboard shortcut system (K, X, Ctrl+Enter, Ctrl+Z, F, arrows)
+- Sidebar cleanup stats (Cleaned Images counter)
+- Debug panel Cleanup metrics section
+- `reviewComplete` property + auto-advance on successful cleanup
+
+### Milestone 5 — Exact Duplicate Removal *(Current)*
+- `DuplicateService` (Hash-based exact duplicate detection, keeper selection by file size)
+- `DuplicateWorker` (Async worker for duplicate removal)
+- `ScanController` integration with `removeExactDuplicates()`
+- TopBar UI integration with "Clean Exact Duplicates" button
+
+---
 
 ## Known Issues
-- None yet.
+- None identified post-Milestone 5.
 
 ## Next Planned Milestone
-- TBD (Actions/Deduplication)
+- Milestone 6: TBD (Candidates: permanent trash emptying, export reports, smart album suggestions, settings persistence improvements)

@@ -6,78 +6,13 @@ import themes 1.0
 Rectangle {
     color: Theme.bgSidebar
 
-    // Derived state
-    property bool inGroupReview: typeof similarityController !== "undefined"
-                                 && similarityController.similarityState === "ready"
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.spaceM
         spacing: Theme.spaceS
 
-        // ── Library section (hidden during group review) ─────────────
-        Text {
-            visible: !inGroupReview
-            text: "Library"
-            color: Theme.textMuted
-            font.pixelSize: Theme.fontSmall
-            font.bold: true
-            font.letterSpacing: 1.2
-            Layout.bottomMargin: Theme.spaceXS
-        }
-
-        Rectangle {
-            visible: !inGroupReview
-            Layout.fillWidth: true
-            Layout.preferredHeight: 36
-            radius: Theme.radiusS
-            color: Theme.accent
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spaceS
-                anchors.rightMargin: Theme.spaceS
-                spacing: Theme.spaceS
-
-                Text {
-                    text: "🖼"
-                    font.pixelSize: Theme.fontBody
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                Text {
-                    text: "All Photos"
-                    color: Theme.textPrimary
-                    font.pixelSize: Theme.fontBody
-                    Layout.fillWidth: true
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                Rectangle {
-                    visible: typeof scanController !== "undefined" && scanController.scannedCount > 0
-                    Layout.preferredWidth: countLabel.implicitWidth + Theme.spaceS * 2
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: Theme.accentHover
-
-                    Text {
-                        id: countLabel
-                        anchors.centerIn: parent
-                        text: typeof scanController !== "undefined" ? scanController.scannedCount : "0"
-                        color: Theme.textPrimary
-                        font.pixelSize: Theme.fontCaption
-                    }
-                }
-            }
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // ── Group Review Panel (replaces Library when reviewing) ─────
-        // ══════════════════════════════════════════════════════════════
-
         // Section header
         Text {
-            visible: inGroupReview
             text: "GROUP REVIEW"
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
@@ -88,7 +23,6 @@ Rectangle {
 
         // Group info card
         Rectangle {
-            visible: inGroupReview
             Layout.fillWidth: true
             color: Theme.bgPanel
             radius: Theme.radiusM
@@ -195,10 +129,42 @@ Rectangle {
             }
         }
 
+        // ── Cleanup Stats ────────────────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 60
+            radius: Theme.radiusS
+            color: Theme.bgCard
+            
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 4
+                
+                Text {
+                    text: "Cleaned Images"
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
+                    Layout.alignment: Qt.AlignHCenter
+                }
+                
+                Text {
+                    text: typeof cleanupController !== "undefined" ? cleanupController.totalDeleted : "0"
+                    color: Theme.textPrimary
+                    font.pixelSize: Theme.fontBody
+                    font.bold: true
+                    Layout.alignment: Qt.AlignHCenter
+                }
+            }
+        }
+
+        // Spacer to push navigation buttons to the bottom
+        Item {
+            Layout.fillHeight: true
+        }
+
         // ── Navigation Buttons (stacked vertically) ──────────────────
         Button {
             id: prevBtn
-            visible: inGroupReview
             Layout.fillWidth: true
             Layout.preferredHeight: 36
             text: "◀  Previous"
@@ -229,7 +195,6 @@ Rectangle {
 
         Button {
             id: nextBtn
-            visible: inGroupReview
             Layout.fillWidth: true
             Layout.preferredHeight: 36
             text: "Next  ▶"

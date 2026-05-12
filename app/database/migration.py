@@ -31,7 +31,18 @@ def run_migrations(db_path_str: str = "data/proximi.db"):
             cursor.execute("CREATE INDEX ix_images_dhash ON images (dhash)")
             
             conn.commit()
-            logger.info("DB migration completed successfully.")
+            logger.info("DB migration completed successfully (images hashes).")
+            
+        # Milestone 4: Check if 'trash_records' exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trash_records'")
+        if not cursor.fetchone():
+            logger.info("Running DB migration: 'trash_records' table missing. Creating via SQLAlchemy.")
+            from app.database.connection import db
+            from app.database.base import Base
+            import app.models # Ensure models are loaded
+            Base.metadata.create_all(bind=db.engine)
+            logger.info("DB migration completed successfully (trash_records).")
+
         
     except Exception as e:
         logger.error(f"Failed to run migrations: {e}")

@@ -21,13 +21,21 @@ class SimilarityWorker(QRunnable):
                  similarity_service: SimilarityService, 
                  grouping_service: GroupingService,
                  group_repository: GroupRepository,
-                 session_id: int):
+                 session_id: int,
+                 phash_threshold: int = 12,
+                 ssim_threshold: float = 0.55,
+                 dhash_threshold: int = 18,
+                 histogram_threshold: float = 0.30):
         super().__init__()
         self.hash_service = hash_service
         self.similarity_service = similarity_service
         self.grouping_service = grouping_service
         self.group_repository = group_repository
         self.session_id = session_id
+        self.phash_threshold = phash_threshold
+        self.ssim_threshold = ssim_threshold
+        self.dhash_threshold = dhash_threshold
+        self.histogram_threshold = histogram_threshold
         self.signals = SimilarityWorkerSignals()
         self._cancelled = False
         self.setAutoDelete(True)
@@ -42,7 +50,9 @@ class SimilarityWorker(QRunnable):
     @Slot()
     def run(self):
         try:
-            logger.info("SimilarityWorker started.")
+            logger.info(f"SimilarityWorker started. Thresholds: "
+                        f"pHash={self.phash_threshold}, SSIM={self.ssim_threshold}, "
+                        f"dHash={self.dhash_threshold}, Hist={self.histogram_threshold}")
             start_time = time.time()
             
             # Clear old groups
@@ -59,9 +69,11 @@ class SimilarityWorker(QRunnable):
             # Phase 2: Comparing
             if self._cancelled: return
             self.signals.phase_changed.emit("comparing")
-            # Milestone 3 Constraint: default threshold = 7
             similar_pairs = self.similarity_service.find_similar_pairs(
-                candidate_threshold=7,
+                candidate_threshold=self.phash_threshold,
+                ssim_threshold=self.ssim_threshold,
+                dhash_threshold=self.dhash_threshold,
+                histogram_threshold=self.histogram_threshold,
                 on_progress=lambda c, t: self.signals.progress.emit(c, t),
                 is_cancelled=self._is_cancelled
             )

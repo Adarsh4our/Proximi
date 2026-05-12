@@ -20,6 +20,7 @@ QtObject {
 
     readonly property color border: "#2E2E2E"
     readonly property color borderLight: "#3A3A3A"
+    readonly property color bgElevated: "#2A2A2A"
 
     // Card colors
     readonly property color bgCard: "#1E1E1E"

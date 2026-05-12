@@ -167,3 +167,24 @@ class ImageRepository:
             logger.error(f"Failed to update hashes for image {image_id}: {e}")
         finally:
             session.close()
+
+    def delete_images(self, image_ids: list[int]) -> int:
+        """Deletes images from the database by their IDs.
+        
+        Returns:
+            Number of deleted records.
+        """
+        if not image_ids:
+            return 0
+            
+        session: Session = db.SessionLocal()
+        try:
+            deleted_count = session.query(Image).filter(Image.id.in_(image_ids)).delete(synchronize_session=False)
+            session.commit()
+            return deleted_count
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to delete images: {e}")
+            return 0
+        finally:
+            session.close()

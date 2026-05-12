@@ -64,6 +64,13 @@ class WorkerMetrics:
     is_cancelled: bool = False
 
 @dataclass
+class CleanupMetrics:
+    deleted_count: int = 0
+    restored_count: int = 0
+    undo_operations: int = 0
+
+
+@dataclass
 class SimilarityMetrics:
     hashes_computed: int = 0
     candidate_pairs: int = 0
@@ -94,6 +101,7 @@ class DebugService:
         self._thumbnail = ThumbnailMetrics()
         self._worker = WorkerMetrics()
         self._similarity = SimilarityMetrics()
+        self._cleanup = CleanupMetrics()
 
     # ── Scan Metrics ──────────────────────────────────────────────────
 
@@ -176,6 +184,17 @@ class DebugService:
             self._similarity.end_time = time.time()
             self._worker.active_workers = 0
 
+    # ── Cleanup Metrics ───────────────────────────────────────────────
+
+    def cleanup_executed(self, count: int) -> None:
+        with self._lock:
+            self._cleanup.deleted_count += count
+
+    def undo_executed(self, count: int) -> None:
+        with self._lock:
+            self._cleanup.restored_count += count
+            self._cleanup.undo_operations += 1
+
     # ── Snapshot (thread-safe read) ───────────────────────────────────
 
     def get_snapshot(self) -> dict:
@@ -233,6 +252,10 @@ class DebugService:
                 # Worker
                 "activeWorkers": self._worker.active_workers,
                 "workerCancelled": self._worker.is_cancelled,
+                # Cleanup
+                "cleanupDeleted": self._cleanup.deleted_count,
+                "cleanupRestored": self._cleanup.restored_count,
+                "cleanupUndos": self._cleanup.undo_operations,
                 # Database
                 "dbImageCount": db_image_count,
                 "dbSessionCount": db_session_count,
