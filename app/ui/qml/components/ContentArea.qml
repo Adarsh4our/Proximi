@@ -19,40 +19,58 @@ Item {
     property string similarityPhase: typeof similarityController !== "undefined" ? similarityController.currentPhase : ""
     property int similarityProgress: typeof similarityController !== "undefined" ? similarityController.progress : 0
 
-    // Empty State — visible when no images are loaded and not in scanning/similarity mode
+    // ── Derived visibility states ─────────────────────────────────────
+    property bool showEmpty: (!contentRoot.imageModel || contentRoot.imageModel.count === 0)
+                             && contentRoot.scanState !== "scanning"
+                             && contentRoot.similarityState === "idle"
+
+    property bool showGrid: contentRoot.imageModel && contentRoot.imageModel.count > 0
+                            && contentRoot.similarityState === "idle"
+
+    property bool showLoading: contentRoot.scanState === "scanning"
+                               && (!contentRoot.imageModel || contentRoot.imageModel.count === 0)
+
+    property bool showSimilarity: contentRoot.similarityState === "processing"
+
+    property bool showGroupReview: contentRoot.similarityState === "ready"
+
+    // ── Empty State ── (fade transition) ──────────────────────────────
     EmptyState {
         anchors.fill: parent
-        visible: (!contentRoot.imageModel || contentRoot.imageModel.count === 0)
-                 && contentRoot.scanState !== "scanning"
-                 && contentRoot.similarityState === "idle"
+        opacity: contentRoot.showEmpty ? 1.0 : 0.0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
     }
 
-    // Image Grid (visible during scanning and after loaded, hidden during similarity review)
+    // ── Image Grid ── (fade transition) ───────────────────────────────
     GridView {
         id: imageGrid
         anchors.fill: parent
         anchors.margins: Theme.gridSpacing
         clip: true
-        visible: contentRoot.imageModel && contentRoot.imageModel.count > 0 && contentRoot.similarityState === "idle"
+        opacity: contentRoot.showGrid ? 1.0 : 0.0
+        visible: opacity > 0
+
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
 
         cellWidth: Theme.thumbnailSize + Theme.gridSpacing
         cellHeight: Theme.thumbnailSize + Theme.gridSpacing
         model: contentRoot.imageModel
-        cacheBuffer: 2000  // Pre-render ~10 rows outside viewport for smooth scrolling
+        cacheBuffer: 4000  // Pre-render ~20 rows outside viewport for smooth 10k+ image scrolling
 
         ScrollBar.vertical: ScrollBar {
             id: vbar
             policy: ScrollBar.AsNeeded
             hoverEnabled: true
-            
+
             background: Item {}
-            
+
             contentItem: Rectangle {
                 implicitWidth: vbar.pressed || vbar.hovered ? 8 : 2
                 radius: width / 2
                 color: Theme.textDisabled
                 opacity: vbar.pressed || vbar.hovered ? 0.8 : 0.4
-                
+
                 Behavior on implicitWidth { NumberAnimation { duration: 150 } }
                 Behavior on opacity { NumberAnimation { duration: 150 } }
             }
@@ -78,16 +96,19 @@ Item {
         maximumFlickVelocity: 4000
     }
 
-    // Loading overlay (shown during scan, overlaid on top of growing grid)
+    // ── Loading overlay ── (skeleton view, fade transition) ───────────
     LoadingView {
         anchors.fill: parent
-        visible: contentRoot.scanState === "scanning" && (!contentRoot.imageModel || contentRoot.imageModel.count === 0)
+        opacity: contentRoot.showLoading ? 1.0 : 0.0
+        visible: opacity > 0
         currentCount: contentRoot.scannedCount
         totalCount: contentRoot.totalImages
         progressPercent: contentRoot.scanProgress
+
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
     }
 
-    // Compact progress bar at top when scanning with grid visible
+    // ── Compact progress bar at top (during scan with grid visible) ───
     Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
@@ -99,28 +120,50 @@ Item {
         Rectangle {
             width: parent.width * (contentRoot.scanProgress / 100)
             height: parent.height
+            radius: 1
             color: Theme.accent
 
             Behavior on width {
-                NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                NumberAnimation { duration: Theme.animNormal; easing.type: Easing.OutCubic }
+            }
+
+            // Glowing leading edge
+            Rectangle {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20
+                height: parent.height + 4
+                radius: 2
+                visible: contentRoot.scanProgress > 0 && contentRoot.scanProgress < 100
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 1.0; color: Theme.glowAccent }
+                }
             }
         }
     }
 
-    // Similarity Processing Overlay
+    // ── Similarity Processing Overlay ── (fade transition) ───────────
     SimilarityProcessingView {
         anchors.fill: parent
-        visible: contentRoot.similarityState === "processing"
+        opacity: contentRoot.showSimilarity ? 1.0 : 0.0
+        visible: opacity > 0
         phase: contentRoot.similarityPhase
         progressPercent: contentRoot.similarityProgress
+
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
     }
 
-    // Group Review View
+    // ── Group Review View ── (fade transition) ───────────────────────
     GroupReviewView {
         anchors.fill: parent
-        visible: contentRoot.similarityState === "ready"
+        opacity: contentRoot.showGroupReview ? 1.0 : 0.0
+        visible: opacity > 0
         currentIndex: typeof similarityController !== "undefined" ? similarityController.currentGroupIndex : 0
         totalGroups: typeof similarityController !== "undefined" ? similarityController.groupCount : 0
         currentGroup: typeof similarityController !== "undefined" ? similarityController.currentGroupData : ({})
+
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
     }
 }

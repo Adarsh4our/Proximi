@@ -2,17 +2,30 @@ import os
 from pathlib import Path
 from app.utils.logger import logger
 
+
 class FolderService:
-    """Service to manage necessary application directories."""
-    
-    def __init__(self):
+    """Service to manage necessary application directories.
+
+    Accepts an optional SettingsService reference. When session persistence
+    is enabled, startup/exit cleanup is skipped so data survives restarts.
+    """
+
+    def __init__(self, settings_service=None):
+        self.settings_service = settings_service
         self.base_dir = Path("data")
         self.required_dirs = [
             self.base_dir / "thumbnails",
             self.base_dir / "trash",
             self.base_dir / "cache",
-            self.base_dir / "logs"
+            self.base_dir / "logs",
         ]
+
+    @property
+    def _persistence_enabled(self) -> bool:
+        """True when the user has opted-in to session persistence."""
+        if self.settings_service is None:
+            return False
+        return bool(self.settings_service.get("session_persistence", False))
 
     def ensure_data_directories(self) -> None:
         """Creates required application directories if they don't exist."""
@@ -24,38 +37,59 @@ class FolderService:
                 logger.error(f"Failed to create directory {directory}: {e}")
 
     def cleanup_startup(self) -> None:
-        """Cleans up data directories on startup, ignoring locked log files."""
+        """Cleans up data directories on startup.
+
+        Skipped when session persistence is enabled — the user's previous
+        scan data is intentionally kept between launches.
+        """
+        if self._persistence_enabled:
+            logger.info(
+                "Session persistence is ON — skipping startup cleanup. "
+                "Previous session data will be restored."
+            )
+            return
+
         import shutil
-        logger.info("Performing startup cleanup...")
+        logger.info("Performing startup cleanup (persistence OFF)...")
         for directory in self.required_dirs:
             if directory.name == "logs":
-                continue # Skip logs as it might be locked
+                continue  # Skip logs — may be locked by the running logger
             shutil.rmtree(directory, ignore_errors=True)
-            
-        # Clean up database if exists
+
+        # Remove database
         db_file = self.base_dir / "proximi.db"
         if db_file.exists():
             try:
                 db_file.unlink()
             except Exception as e:
                 logger.error(f"Failed to delete db file on startup: {e}")
-                
-        # Also clean up faces dir if it exists (not in required_dirs but created by face service)
+
+        # Clean up faces dir (not in required_dirs but created by face service)
         faces_dir = self.base_dir / "faces"
         shutil.rmtree(faces_dir, ignore_errors=True)
 
     def cleanup_data_directory(self) -> None:
-        """Deletes the entire data directory to clear session data."""
-        import shutil
+        """Deletes the entire data directory on app exit.
+
+        Skipped when session persistence is enabled — only closes DB handles
+        gracefully so data is available on next launch.
+        """
         from app.database.connection import db
         from app.utils.logger import shutdown_logger
-        
-        # Release locks
-        logger.info("Initiating session data cleanup...")
+
+        if self._persistence_enabled:
+            logger.info(
+                "Session persistence is ON — retaining session data on exit."
+            )
+            db.close_database()
+            shutdown_logger()
+            return
+
+        import shutil
+        logger.info("Initiating session data cleanup (persistence OFF)...")
         db.close_database()
         shutdown_logger()
-        
-        # Delete directory
+
         try:
             shutil.rmtree(self.base_dir, ignore_errors=True)
             print(f"Cleaned up {self.base_dir} directory.")

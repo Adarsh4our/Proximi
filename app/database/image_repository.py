@@ -103,6 +103,69 @@ class ImageRepository:
         finally:
             session.close()
 
+    def bulk_upsert_images(self, image_data_list: list[dict]) -> int:
+        """Batch-insert/update a list of images in a single DB transaction.
+
+        Uses SQLAlchemy Core INSERT OR REPLACE for efficiency — one round-trip
+        for N images instead of N round-trips. 
+
+        Args:
+            image_data_list: List of dicts, each with Image model columns.
+
+        Returns:
+            Number of successfully persisted images.
+        """
+        if not image_data_list:
+            return 0
+
+        session: Session = db.SessionLocal()
+        try:
+            # Upsert: merge existing records or insert new ones.
+            # We use merge() which is safe for INSERT OR REPLACE semantics.
+            for image_data in image_data_list:
+                original_path = image_data.get("original_path")
+                if not original_path:
+                    continue
+                existing = session.query(Image).filter_by(
+                    original_path=original_path
+                ).first()
+                if existing:
+                    for key in ("file_size", "modified_at", "thumbnail_path",
+                                "width", "height", "scan_session_id"):
+                        if key in image_data:
+                            setattr(existing, key, image_data[key])
+                else:
+                    session.add(Image(**image_data))
+
+            session.commit()
+            return len(image_data_list)
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Bulk upsert failed for batch of {len(image_data_list)}: {e}")
+            raise  # Re-raise so scan_service can fall back to individual upserts
+        finally:
+            session.close()
+
+    def get_latest_scan_folder(self) -> Optional[str]:
+        """Return the folder path of the most recent completed scan session.
+
+        Used by M12 session restore to know which folder was last scanned.
+        Returns None if no completed session exists.
+        """
+        session: Session = db.SessionLocal()
+        try:
+            latest = (
+                session.query(ScanSession)
+                .filter_by(status="completed")
+                .order_by(ScanSession.id.desc())
+                .first()
+            )
+            return latest.folder_path if latest else None
+        finally:
+            session.close()
+
+
+
     def insert_image_with_id(self, image_data: dict) -> Optional[Image]:
         """Insert an image preserving its original ID and hash_computed_at field.
         Used exclusively for Undo operations to maintain referential integrity.

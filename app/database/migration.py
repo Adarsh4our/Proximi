@@ -62,8 +62,60 @@ def run_migrations(db_path_str: str = "data/proximi.db"):
             import app.models # Ensure models are loaded
             Base.metadata.create_all(bind=db.engine)
             logger.info("DB migration completed successfully (missing tables created).")
+
+        # ── M11: Performance indexes ───────────────────────────────────
+        _ensure_indexes(cursor)
+        conn.commit()
+
     except Exception as e:
         logger.error(f"Failed to run migrations: {e}")
     finally:
         if 'conn' in locals() and conn:
             conn.close()
+
+
+def _ensure_indexes(cursor) -> None:
+    """Create performance-critical indexes if they don't already exist.
+
+    Safe to call on every startup — all statements use IF NOT EXISTS.
+    """
+    indexes = [
+        # Fast per-session image queries (scan progress, session reload)
+        ("idx_images_scan_session",
+         "CREATE INDEX IF NOT EXISTS idx_images_scan_session "
+         "ON images(scan_session_id)"),
+
+        # Fast unhashed-images query (hash pipeline)
+        ("idx_images_phash_null",
+         "CREATE INDEX IF NOT EXISTS idx_images_phash_null "
+         "ON images(id) WHERE phash IS NULL"),
+
+        # Fast all-hashed-images query (similarity pipeline)
+        ("idx_images_phash_notnull",
+         "CREATE INDEX IF NOT EXISTS idx_images_phash_notnull "
+         "ON images(phash) WHERE phash IS NOT NULL"),
+
+        # Fast group member lookups (group review view)
+        ("idx_group_members_group",
+         "CREATE INDEX IF NOT EXISTS idx_group_members_group "
+         "ON group_members(group_id)"),
+
+        # Fast per-person face lookups (people view)
+        ("idx_faces_person",
+         "CREATE INDEX IF NOT EXISTS idx_faces_person "
+         "ON faces(person_id)"),
+
+        # Fast staged-for-trash queries (cleanup pipeline)
+        ("idx_images_staged",
+         "CREATE INDEX IF NOT EXISTS idx_images_staged "
+         "ON images(is_staged_for_trash) WHERE is_staged_for_trash = 1"),
+    ]
+
+    for index_name, sql in indexes:
+        try:
+            cursor.execute(sql)
+            logger.debug(f"Index ensured: {index_name}")
+        except Exception as e:
+            # Non-fatal: table may not exist yet (e.g. group_members before first run)
+            logger.debug(f"Index skipped ({index_name}): {e}")
+

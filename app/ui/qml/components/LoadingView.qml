@@ -10,49 +10,91 @@ Item {
     property int totalCount: 0
     property int progressPercent: 0
 
+    // ── Skeleton Grid ─────────────────────────────────────────────────
+    GridView {
+        id: skeletonGrid
+        anchors.fill: parent
+        anchors.margins: Theme.gridSpacing
+        anchors.bottomMargin: 100  // Reserve space for progress info
+        clip: true
+
+        cellWidth: Theme.thumbnailSize + Theme.gridSpacing
+        cellHeight: Theme.thumbnailSize + Theme.gridSpacing
+        interactive: false
+
+        model: 12
+
+        delegate: Item {
+            width: skeletonGrid.cellWidth - Theme.gridSpacing
+            height: skeletonGrid.cellHeight - Theme.gridSpacing
+
+            Rectangle {
+                id: skeletonCard
+                anchors.fill: parent
+                anchors.margins: 2
+                radius: Theme.radiusS
+                color: Theme.bgCard
+                clip: true
+
+                // Shimmer sweep
+                Rectangle {
+                    id: shimmer
+                    width: parent.width * 0.4
+                    height: parent.height
+                    radius: parent.radius
+                    opacity: 0.15
+
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 0.5; color: Theme.bgHover }
+                        GradientStop { position: 1.0; color: "transparent" }
+                    }
+
+                    SequentialAnimation on x {
+                        loops: Animation.Infinite
+                        NumberAnimation {
+                            from: -shimmer.width
+                            to: skeletonCard.width
+                            duration: 1400
+                            easing.type: Easing.InOutQuad
+                        }
+                        PauseAnimation { duration: 200 + index * 60 }
+                    }
+                }
+
+                // Faint icon placeholder in center
+                Text {
+                    anchors.centerIn: parent
+                    text: "🖼"
+                    font.pixelSize: 24
+                    opacity: 0.08
+                }
+            }
+
+            // Staggered entrance
+            opacity: 0
+            Component.onCompleted: skelEntranceAnim.start()
+            SequentialAnimation {
+                id: skelEntranceAnim
+                PauseAnimation { duration: index * 50 }
+                NumberAnimation { target: parent; property: "opacity"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic }
+            }
+        }
+    }
+
+    // ── Bottom Progress Section ────────────────────────────────────────
     ColumnLayout {
-        anchors.centerIn: parent
-        spacing: Theme.spaceM
-        width: Math.min(parent.width * 0.5, 320)
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.spaceL
+        spacing: Theme.spaceS
 
-        // Pulsing indicator
-        Rectangle {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: 48
-            Layout.preferredHeight: 48
-            radius: 24
-            color: Theme.accent
-            opacity: pulseAnim.running ? 1.0 : 0.6
-
-            Text {
-                anchors.centerIn: parent
-                text: "🔍"
-                font.pixelSize: 22
-            }
-
-            SequentialAnimation on opacity {
-                id: pulseAnim
-                running: true
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.4; duration: 800; easing.type: Easing.InOutQuad }
-                NumberAnimation { to: 1.0; duration: 800; easing.type: Easing.InOutQuad }
-            }
-        }
-
-        // Scanning text
-        Text {
-            text: "Scanning images..."
-            color: Theme.textPrimary
-            font.pixelSize: Theme.fontHeader
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            Layout.fillWidth: true
-        }
-
-        // Progress text
+        // Status text
         Text {
             text: loadingRoot.totalCount > 0
-                  ? loadingRoot.currentCount + " of " + loadingRoot.totalCount + " images"
+                  ? "Scanning... " + loadingRoot.currentCount + " of " + loadingRoot.totalCount + " images"
                   : "Discovering files..."
             color: Theme.textSecondary
             font.pixelSize: Theme.fontBody
@@ -74,12 +116,27 @@ Item {
                 color: Theme.accent
 
                 Behavior on width {
-                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                    NumberAnimation { duration: Theme.animNormal; easing.type: Easing.OutCubic }
+                }
+
+                // Glowing leading edge
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 24
+                    height: parent.height + 4
+                    radius: 2
+                    visible: loadingRoot.progressPercent > 0 && loadingRoot.progressPercent < 100
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "transparent" }
+                        GradientStop { position: 1.0; color: Theme.glowAccent }
+                    }
                 }
             }
         }
 
-        // Percentage text
+        // Percentage
         Text {
             text: loadingRoot.progressPercent + "%"
             color: Theme.textMuted

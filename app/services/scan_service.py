@@ -13,8 +13,8 @@ from app.utils.logger import logger
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 
 # Parallelism tuning
-_THUMBNAIL_WORKERS = 6       # Parallel thumbnail generation threads
-_DB_BATCH_SIZE = 50           # Batch DB writes every N images
+_THUMBNAIL_WORKERS = 8        # Parallel thumbnail generation threads
+_DB_BATCH_SIZE = 100          # Batch DB writes every N images
 
 
 class ScanService:
@@ -343,16 +343,34 @@ class ScanService:
         return processed_count
 
     def _flush_batch(self, batch: list[dict], on_image_ready: Optional[Callable] = None):
-        """Persist a batch of processed images to the DB and notify the UI."""
-        for item in batch:
-            try:
-                self.image_repository.upsert_image(item["image_data"])
+        """Persist a batch of processed images to the DB in one bulk operation.
+        
+        Uses a single INSERT OR REPLACE statement for the entire batch instead
+        of N individual upserts, dramatically reducing DB lock contention on
+        large (10k+) image scans.
+        """
+        if not batch:
+            return
 
+        image_data_list = [item["image_data"] for item in batch]
+        callback_data_list = [item["callback_data"] for item in batch]
+
+        try:
+            self.image_repository.bulk_upsert_images(image_data_list)
+        except Exception as e:
+            logger.error(f"Bulk upsert failed, falling back to individual upserts: {e}")
+            for item in batch:
+                try:
+                    self.image_repository.upsert_image(item["image_data"])
+                except Exception as ie:
+                    logger.error(f"Individual upsert failed: {ie}")
+
+        # Notify UI for all items in the batch
+        for cb in callback_data_list:
+            try:
                 if self._debug_service:
                     self._debug_service.scan_image_processed(skipped=False)
-
-                cb = item["callback_data"]
                 if on_image_ready and cb["thumbnail_path"]:
                     on_image_ready(cb["original_path"], cb["thumbnail_path"], cb["file_name"])
             except Exception as e:
-                logger.error(f"Failed to persist image: {e}")
+                logger.error(f"Callback error: {e}")

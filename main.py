@@ -2,7 +2,7 @@ import sys
 import os
 from pathlib import Path
 
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QFontDatabase
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication  # Needed for QFileDialog
 
@@ -30,8 +30,11 @@ from app.controllers.face_controller import FaceController
 from app.services.duplicate_service import DuplicateService
 
 def main():
-    # 1. Initialize environment and folders
-    folder_service = FolderService()
+    # 1. Initialize SettingsService FIRST — FolderService reads persistence flag at startup
+    settings_service = SettingsService()
+
+    # 2. Initialize environment and folders (persistence-aware cleanup)
+    folder_service = FolderService(settings_service=settings_service)
     folder_service.cleanup_startup()
     folder_service.ensure_data_directories()
     
@@ -43,6 +46,17 @@ def main():
     # 3. Setup Application
     # Using QApplication (not QGuiApplication) to support QFileDialog
     app = QApplication(sys.argv)
+    
+    # 3.5 Load bundled Inter font
+    fonts_dir = Path(__file__).parent / "assets" / "fonts"
+    if fonts_dir.exists():
+        for font_file in fonts_dir.glob("*.ttf"):
+            font_id = QFontDatabase.addApplicationFont(str(font_file))
+            if font_id >= 0:
+                logger.debug(f"Loaded font: {font_file.name}")
+            else:
+                logger.warning(f"Failed to load font: {font_file.name}")
+    
     engine = QQmlApplicationEngine()
     
     # Add themes directory to import paths for the pragma Singleton
@@ -50,7 +64,7 @@ def main():
     engine.addImportPath(str(ui_dir))
 
     # 4. Initialize Services
-    settings_service = SettingsService()
+    # Note: settings_service already created above
     image_repository = ImageRepository()
     group_repository = GroupRepository()
     trash_repository = TrashRepository()
@@ -68,7 +82,12 @@ def main():
     app_controller = AppController()
     settings_controller = SettingsController(settings_service)
     face_controller = FaceController()  # Created early — injected into scan_controller for pipelined face detection
-    scan_controller = ScanController(scan_service, duplicate_service, image_repository, debug_service, face_controller=face_controller)
+    scan_controller = ScanController(
+        scan_service, duplicate_service, image_repository,
+        debug_service,
+        face_controller=face_controller,
+        settings_controller=settings_controller,
+    )
     debug_controller = DebugController(debug_service)
     similarity_controller = SimilarityController(
         hash_service, 

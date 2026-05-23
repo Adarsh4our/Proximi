@@ -11,26 +11,24 @@ Item {
     property int displayRotation: 0  // 0, 90, 180, 270 degrees CCW
     property bool isFlicking: false   // Bound from parent GridView — disables smooth during fast scroll
 
-    Component.onCompleted: {
-        if (typeof cleanupController !== "undefined" && cardRoot.imageId !== -1) {
-            cardRoot.selectionState = cleanupController.selectionState[String(cardRoot.imageId)] || "unselected"
-        }
-    }
+    // Component.onCompleted — moved to entrance animation section below
 
     // Scale on hover for a lift effect
-    scale: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 1.02 : 1.0
+    scale: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 1.04 : 1.0
     z: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 10 : 0
-    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+    Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
 
-    // Drop shadow simulation
+    // Drop shadow simulation — deeper on hover
     Rectangle {
         anchors.fill: cardBg
-        color: Theme.shadowColor
-        radius: Theme.radiusS
-        opacity: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 0.8 : 0.2
-        y: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 4 : 2
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-        Behavior on y { NumberAnimation { duration: 150 } }
+        anchors.margins: -2
+        color: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? Theme.shadowDeep : Theme.shadowColor
+        radius: Theme.radiusS + 2
+        opacity: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 0.9 : 0.15
+        y: typeof mouseArea !== "undefined" && mouseArea.containsMouse ? 6 : 2
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 200 } }
     }
 
     Connections {
@@ -271,6 +269,36 @@ Item {
         radius: Theme.radiusS + 2
         anchors.margins: -2
         visible: cardRoot.activeFocus
+    }
+
+    // ── Staggered entrance animation ─────────────────────────────────
+    // Only plays once per delegate lifetime — skipped on GridView recycle.
+    property bool _hasAnimated: false
+
+    Component.onCompleted: {
+        // Initialize selection state from controller
+        if (typeof cleanupController !== "undefined" && cardRoot.imageId !== -1) {
+            cardRoot.selectionState = cleanupController.selectionState[String(cardRoot.imageId)] || "unselected"
+        }
+        // Only animate on first appearance, not on delegate recycle
+        if (!cardRoot._hasAnimated) {
+            cardRoot._hasAnimated = true
+            entranceAnim.start()
+        }
+    }
+
+    ParallelAnimation {
+        id: entranceAnim
+        NumberAnimation {
+            target: cardRoot; property: "opacity"
+            from: 0; to: 1; duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: cardRoot; property: "scale"
+            from: 0.92; to: 1.0; duration: 300
+            easing.type: Easing.OutCubic
+        }
     }
 
     // Keyboard support

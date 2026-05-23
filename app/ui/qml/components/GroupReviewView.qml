@@ -14,8 +14,9 @@ Item {
     property bool hasData: currentGroup && currentGroup.images && currentGroup.images.length > 0
 
     onCurrentGroupChanged: {
+        // Trigger crossfade transition when group changes
         if (typeof groupGrid !== "undefined") {
-            groupGrid.updateModel()
+            groupTransition.start()
         }
     }
 
@@ -25,6 +26,14 @@ Item {
         if (visible && typeof groupGrid !== "undefined") {
             groupGrid.updateModel()
         }
+    }
+
+    // ── Group crossfade transition ──────────────────────────────────
+    SequentialAnimation {
+        id: groupTransition
+        NumberAnimation { target: groupGrid; property: "opacity"; to: 0; duration: 120; easing.type: Easing.InCubic }
+        ScriptAction { script: groupGrid.updateModel() }
+        NumberAnimation { target: groupGrid; property: "opacity"; to: 1; duration: 200; easing.type: Easing.OutCubic }
     }
 
     // FIX 2: Timer-based retry for first group data population.

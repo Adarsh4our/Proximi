@@ -15,6 +15,7 @@ ApplicationWindow {
     title: qsTr("Proximi")
 
     color: Theme.bgApp
+    font.family: Theme.fontFamily
 
     // ── Application State ────────────────────────────────────────────
     property string currentView: "photos" // "photos" or "people"
@@ -60,8 +61,11 @@ ApplicationWindow {
 
     // ── Startup initialization ───────────────────────────────────────
     Component.onCompleted: {
-        // App launches into a clean empty state on startup
-        // We do not load stored images automatically
+        // M12: Restore previous session if persistence is enabled.
+        // loadPersistedSession() is a no-op when persistence is OFF.
+        if (typeof scanController !== "undefined") {
+            scanController.loadPersistedSession()
+        }
     }
 
     // ── Keyboard shortcut: Ctrl+Shift+D → toggle debug panel ────────
@@ -112,16 +116,27 @@ ApplicationWindow {
                                          && similarityController.similarityState === "ready"
 
             Sidebar {
-                visible: parent.inGroupReview
-                Layout.preferredWidth: parent.inGroupReview ? 200 : 0
+                visible: parent.inGroupReview || sidebarWidthAnim.running
+                Layout.preferredWidth: parent.inGroupReview ? 220 : 0
                 Layout.fillHeight: true
+                clip: true
+
+                Behavior on Layout.preferredWidth {
+                    NumberAnimation {
+                        id: sidebarWidthAnim
+                        duration: Theme.animPage
+                        easing.type: Easing.OutCubic
+                    }
+                }
             }
 
             Rectangle {
-                visible: parent.inGroupReview
+                visible: parent.inGroupReview || sidebarWidthAnim.running
                 Layout.preferredWidth: 1
                 Layout.fillHeight: true
                 color: Theme.border
+                opacity: parent.inGroupReview ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: Theme.animPage } }
             }
 
             // Content + Debug panel overlay container
@@ -174,4 +189,25 @@ ApplicationWindow {
         anchors.fill: parent
         z: 9999
     }
+
+    // ── Onboarding overlay — first launch only ──────────────────────
+    OnboardingOverlay {
+        id: onboardingOverlay
+        anchors.fill: parent
+        z: 10000
+
+        // Show when the user hasn't completed onboarding yet
+        visible: typeof settingsController !== "undefined"
+                 && !settingsController.onboardingCompleted
+
+        // Opacity-based entrance/exit so we can fade out on completion
+        opacity: visible ? 1.0 : 0.0
+        Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
+
+        onCompleted: {
+            if (typeof settingsController !== "undefined")
+                settingsController.completeOnboarding()
+        }
+    }
 }
+

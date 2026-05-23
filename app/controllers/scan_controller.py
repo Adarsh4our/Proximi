@@ -72,15 +72,16 @@ class ScanController(QObject):
     duplicateRemovalError = Signal(str)
     isRemovingDuplicatesChanged = Signal()
 
-    def __init__(self, scan_service: ScanService, duplicate_service: DuplicateService, image_repository: ImageRepository, debug_service: DebugService = None, face_controller=None, parent=None):
+    def __init__(self, scan_service: ScanService, duplicate_service: DuplicateService, image_repository: ImageRepository, debug_service: DebugService = None, face_controller=None, settings_controller=None, parent=None):
         super().__init__(parent)
         self._scan_service = scan_service
         self._duplicate_service = duplicate_service
         self._image_repository = image_repository
         self._debug_service = debug_service
         self._face_controller = face_controller
+        self._settings_controller = settings_controller
         self._current_folder = ""
-        self._scan_state = "empty"     # empty | scanning | loaded
+        self._scan_state = "empty"     # empty | scanning | loaded | restored
         self._scan_progress = 0        # 0-100
         self._scanned_count = 0
         self._total_images = 0
@@ -226,6 +227,66 @@ class ScanController(QObject):
                 vm = ImageViewModel.from_image(img)
                 result.append(vm)
         return result
+
+    @Slot()
+    def loadPersistedSession(self):
+        """Restore the previous scan session on app startup (M12).
+
+        Called from Main.qml Component.onCompleted when session persistence
+        is enabled. Emits imageReady for every stored image so the grid
+        populates immediately without a re-scan.
+
+        No-ops if:
+          - Persistence is disabled in settings
+          - No images are stored in the database
+        """
+        # Check persistence flag via settings controller
+        persistence_on = False
+        if self._settings_controller is not None:
+            try:
+                persistence_on = self._settings_controller.sessionPersistence
+            except Exception:
+                pass
+
+        if not persistence_on:
+            logger.debug("loadPersistedSession: persistence OFF — nothing to restore.")
+            return
+
+        images = self._image_repository.get_all_images()
+        if not images:
+            logger.info("loadPersistedSession: no stored images found.")
+            return
+
+        logger.info(f"Restoring persisted session: {len(images)} images.")
+
+        # Restore the folder path from the last scan session
+        last_folder = self._image_repository.get_latest_scan_folder()
+        if last_folder:
+            self._current_folder = last_folder
+            self._has_scanned_current_folder = True
+            self.currentFolderChanged.emit()
+            self.hasScannedCurrentFolderChanged.emit()
+
+        # Emit each image into the grid
+        for img in images:
+            if img.thumbnail_path:
+                vm = ImageViewModel.from_image(img)
+                self.imageReady.emit(
+                    vm["imageId"],
+                    vm["originalPath"],
+                    vm["thumbnailPath"],
+                    vm["fileName"],
+                )
+
+        # Update counts
+        self._scanned_count = len(images)
+        self._total_images = len(images)
+        self._scan_state = "loaded"
+        self.scannedCountChanged.emit()
+        self.totalImagesChanged.emit()
+        self.scanStateChanged.emit()
+
+        logger.info("Persisted session restored successfully.")
 
     # ── Internal Signal Handlers ──────────────────────────────────────
 

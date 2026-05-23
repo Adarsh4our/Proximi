@@ -60,4 +60,17 @@ QtObject {
     // Grid
     readonly property int thumbnailSize: 180
     readonly property int gridSpacing: 8
+
+    // Animation Durations
+    readonly property int animFast: 120
+    readonly property int animNormal: 250
+    readonly property int animSlow: 400
+    readonly property int animPage: 350
+
+    // Shadows & Effects
+    readonly property color shadowDeep: "#60000000"
+    readonly property color glowAccent: "#407C3AED"
+
+    // Font
+    readonly property string fontFamily: "Inter"
 }

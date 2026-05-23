@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import themes 1.0
 
 Rectangle {
+    id: footerRoot
     color: Theme.bgGlass
 
     // Top glow line
@@ -23,7 +24,7 @@ Rectangle {
         Row {
             Layout.alignment: Qt.AlignVCenter
             spacing: 6
-            
+
             // Pulsing dot indicator
             Rectangle {
                 width: 8
@@ -32,7 +33,7 @@ Rectangle {
                 color: Theme.accent
                 anchors.verticalCenter: parent.verticalCenter
                 visible: typeof scanController !== "undefined" && scanController.scanState === "scanning"
-                
+
                 SequentialAnimation on opacity {
                     loops: Animation.Infinite
                     running: visible
@@ -43,17 +44,14 @@ Rectangle {
 
             Text {
                 text: {
-                    if (toastTimer.running) return toastText
                     return typeof scanController !== "undefined" && scanController.scanState === "scanning"
                       ? "Scanning..."
                       : "Ready"
                 }
-                color: toastTimer.running ? Theme.accent : Theme.textSecondary
+                color: Theme.textSecondary
                 font.pixelSize: Theme.fontCaption
-                font.bold: toastTimer.running
+                font.family: Theme.fontFamily
                 anchors.verticalCenter: parent.verticalCenter
-                
-                Behavior on color { ColorAnimation { duration: 150 } }
             }
         }
 
@@ -69,23 +67,85 @@ Rectangle {
             }
             color: Theme.textMuted
             font.pixelSize: Theme.fontCaption
+            font.family: Theme.fontFamily
             Layout.alignment: Qt.AlignVCenter
         }
     }
-    
+
+    // ── Animated Toast Notification ────────────────────────────────────
     property string toastText: ""
-    
+    property bool toastVisible: false
+
     Timer {
         id: toastTimer
-        interval: 2000
+        interval: 2500
         repeat: false
+        onTriggered: footerRoot.toastVisible = false
     }
-    
+
     Connections {
         target: typeof cleanupController !== "undefined" ? cleanupController : null
         function onActionCompleted(msg) {
-            toastText = msg
+            footerRoot.toastText = msg
+            footerRoot.toastVisible = true
             toastTimer.restart()
+        }
+    }
+
+    // Floating toast pill — slides up from footer
+    Rectangle {
+        id: toastPill
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: footerRoot.toastVisible ? -height - 10 : 0
+        width: toastLabel.implicitWidth + 48
+        height: 36
+        radius: 18
+        color: Theme.bgPanel
+        border.color: Theme.accent
+        border.width: 1
+        opacity: footerRoot.toastVisible ? 1.0 : 0.0
+        visible: opacity > 0
+        z: 100
+
+        // Accent glow behind pill
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: parent.radius + 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.glowAccent
+            opacity: 0.5
+        }
+
+        Row {
+            anchors.centerIn: parent
+            spacing: 8
+
+            Text {
+                text: "✓"
+                color: Theme.success
+                font.bold: true
+                font.pixelSize: Theme.fontBody
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                id: toastLabel
+                text: footerRoot.toastText
+                color: Theme.textPrimary
+                font.bold: true
+                font.pixelSize: Theme.fontSmall
+                font.family: Theme.fontFamily
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        Behavior on y {
+            NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutBack }
+        }
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.animNormal; easing.type: Easing.OutCubic }
         }
     }
 }

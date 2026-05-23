@@ -15,7 +15,7 @@ from app.utils.logger import logger
 
 # Maximum thumbnail dimension (width or height)
 THUMBNAIL_MAX_SIZE = 256
-THUMBNAIL_QUALITY = 85
+THUMBNAIL_QUALITY = 80   # 80 vs 85: ~15% smaller cache, imperceptible at 256px
 
 
 class ThumbnailService:

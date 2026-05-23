@@ -217,6 +217,7 @@ Item {
                         width: parent.width * (progressPercent / 100)
                         height: parent.height
                         radius: 3
+                        clip: true
                         
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
@@ -225,7 +226,29 @@ Item {
                         }
                         
                         Behavior on width {
-                            NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                            NumberAnimation { duration: Theme.animSlow; easing.type: Easing.OutCubic }
+                        }
+
+                        // Glowing leading edge
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28
+                            height: parent.height + 6
+                            radius: 3
+                            visible: progressPercent > 0 && progressPercent < 100
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0.0; color: "transparent" }
+                                GradientStop { position: 1.0; color: Theme.glowAccent }
+                            }
+
+                            SequentialAnimation on opacity {
+                                loops: Animation.Infinite
+                                running: visible
+                                NumberAnimation { from: 0.5; to: 1.0; duration: 600; easing.type: Easing.InOutSine }
+                                NumberAnimation { from: 1.0; to: 0.5; duration: 600; easing.type: Easing.InOutSine }
+                            }
                         }
                     }
                 }
