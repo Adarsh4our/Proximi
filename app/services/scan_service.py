@@ -34,43 +34,50 @@ class ScanService:
         self.thumbnail_service = thumbnail_service
         self._debug_service = debug_service
 
-    def discover_images(self, folder_path: str) -> list[Path]:
-        """Recursively discover supported image files in a folder.
+    def discover_images(self, targets: list[str]) -> list[Path]:
+        """Recursively discover supported image files in folders and add specific files.
         
         Returns:
-            Sorted list of resolved Path objects for supported images.
+            Sorted and deduplicated list of resolved Path objects for supported images.
         """
-        folder = Path(folder_path)
-        if not folder.is_dir():
-            logger.error(f"Folder does not exist: {folder_path}")
-            return []
-
-        discovered = []
+        discovered = set()
         skipped_extensions: Counter = Counter()
         total_files = 0
 
-        for item in folder.rglob("*"):
-            if not item.is_file():
-                continue
-            total_files += 1
-            ext = item.suffix.lower()
-            if ext in SUPPORTED_EXTENSIONS:
-                discovered.append(item.resolve())
+        for target_str in targets:
+            target = Path(target_str)
+            if target.is_dir():
+                for item in target.rglob("*"):
+                    if not item.is_file():
+                        continue
+                    total_files += 1
+                    ext = item.suffix.lower()
+                    if ext in SUPPORTED_EXTENSIONS:
+                        discovered.add(item.resolve())
+                    else:
+                        skipped_extensions[ext] += 1
+            elif target.is_file():
+                total_files += 1
+                ext = target.suffix.lower()
+                if ext in SUPPORTED_EXTENSIONS:
+                    discovered.add(target.resolve())
+                else:
+                    skipped_extensions[ext] += 1
             else:
-                skipped_extensions[ext] += 1
+                logger.error(f"Target does not exist: {target_str}")
 
-        # Sort for deterministic processing order
-        discovered.sort()
+        # Convert to list and sort for deterministic processing order
+        discovered_list = sorted(list(discovered))
 
         # Log results
-        skipped_count = total_files - len(discovered)
-        logger.info(f"Discovered {len(discovered)} supported images in '{folder_path}' "
-                     f"(total files: {total_files}, skipped: {skipped_count})")
+        skipped_count = total_files - len(discovered_list)
+        logger.info(f"Discovered {len(discovered_list)} supported images in {len(targets)} targets "
+                    f"(total files encountered: {total_files}, skipped: {skipped_count})")
         if skipped_extensions:
             for ext, count in skipped_extensions.most_common():
                 logger.info(f"  Skipped {count} files with extension '{ext}'")
 
-        return discovered
+        return discovered_list
 
     def _process_single_image_io(self, image_path: Path) -> Optional[dict]:
         """Pure I/O work for a single image: stat, dimensions, thumbnail.
@@ -201,7 +208,7 @@ class ScanService:
 
     def scan_folder(
         self,
-        folder_path: str,
+        folder_path: str | list[str],
         on_image_ready: Optional[Callable] = None,
         on_progress: Optional[Callable] = None,
         is_cancelled: Optional[Callable] = None,
@@ -214,7 +221,7 @@ class ScanService:
         - Skip-detection still works for unchanged images
         
         Args:
-            folder_path: Path to the folder to scan.
+            folder_path: Path(s) to scan (string, semicolon-separated string, or list of strings).
             on_image_ready: Callback(original_path, thumbnail_path, file_name)
             on_progress: Callback(current_index, total_count)
             is_cancelled: Callable returning True if scan should abort.
@@ -222,21 +229,31 @@ class ScanService:
         Returns:
             Total number of successfully processed images.
         """
+        if isinstance(folder_path, str):
+            if ";" in folder_path:
+                targets = [p.strip() for p in folder_path.split(";") if p.strip()]
+            else:
+                targets = [folder_path]
+        else:
+            targets = list(folder_path)
+
+        session_path_str = ";".join(targets)
+
         # Create scan session
-        session_id = self.image_repository.create_scan_session(folder_path)
+        session_id = self.image_repository.create_scan_session(session_path_str)
 
         # Discover images
-        image_paths = self.discover_images(folder_path)
+        image_paths = self.discover_images(targets)
         total = len(image_paths)
 
         if total == 0:
             self.image_repository.complete_scan_session(session_id, 0)
-            logger.info("No images found in folder.")
+            logger.info("No images found in targets.")
             return 0
 
         # Report scan start to debug service
         if self._debug_service:
-            self._debug_service.scan_started(folder_path, total, session_id)
+            self._debug_service.scan_started(session_path_str, total, session_id)
 
         # ── Phase 1: Quick skip-check for unchanged images ────────────
         # Separate images into "needs processing" vs "already cached"

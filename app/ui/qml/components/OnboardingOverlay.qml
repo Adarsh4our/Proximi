@@ -147,12 +147,10 @@ Item {
                             Rectangle {
                                 anchors.centerIn: parent
                                 width: 96; height: 96; radius: 48
-                                color: Qt.rgba(
-                                    parseInt(modelData.accent.slice(1,3), 16) / 255,
-                                    parseInt(modelData.accent.slice(3,5), 16) / 255,
-                                    parseInt(modelData.accent.slice(5,7), 16) / 255,
-                                    0.18
-                                )
+                                color: {
+                                    var c = Qt.color(modelData.accent);
+                                    return Qt.rgba(c.r, c.g, c.b, 0.18);
+                                }
                                 border.color: modelData.accent
                                 border.width: 1.5
 

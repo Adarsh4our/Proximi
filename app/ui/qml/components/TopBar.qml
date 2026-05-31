@@ -16,8 +16,6 @@ Rectangle {
 
     // Derived state helpers
     property bool hasFolder: typeof scanController !== "undefined" && scanController.currentFolder !== ""
-    property string currentView: "photos"
-    signal viewToggled()
     property bool isScanning: typeof scanController !== "undefined" && scanController.scanState === "scanning"
     property bool isLoaded: typeof scanController !== "undefined" && scanController.scanState === "loaded"
     property bool hasScanned: typeof scanController !== "undefined" && scanController.hasScannedCurrentFolder
@@ -133,12 +131,6 @@ Rectangle {
                 }
             }
 
-            ToolTip {
-                visible: folderChipMouse.containsMouse
-                text: folderChip.fullPath
-                delay: 400
-            }
-
             MouseArea {
                 id: folderChipMouse
                 anchors.fill: parent
@@ -152,200 +144,101 @@ Rectangle {
             Layout.fillWidth: true
         }
 
-        // ── View Toggle ──────────────────────────────────────────────
-        Button {
-            id: viewToggleBtn
-            text: currentView === "photos" ? "👥 Switch to People" : "🖼 Switch to Photos"
-            visible: hasScanned
-            onClicked: {
-                viewToggled()
-            }
-            background: Rectangle {
-                color: viewToggleBtn.hovered ? Theme.bgHover : "transparent"
-                radius: Theme.radiusL
-                border.color: viewToggleBtn.hovered ? Theme.accentGlow : Theme.border
-                border.width: 1
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-            }
-            contentItem: Text {
-                text: viewToggleBtn.text
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontSmall
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
-        
         // ── Action buttons ───────────────────────────────────────────
 
-        // Scan Faces button
-        Button {
-            id: scanFacesBtn
-            text: "Scan Faces"
-            visible: hasScanned && !isScanning
-            enabled: typeof faceController !== "undefined" && !faceController.isScanning
-            onClicked: {
-                if (typeof faceController !== "undefined") {
-                    faceController.startFaceScan()
-                }
-            }
-            background: Rectangle {
-                color: scanFacesBtn.hovered ? Theme.bgHover : "transparent"
-                radius: Theme.radiusL
-                border.color: scanFacesBtn.hovered ? Theme.accentGlow : Theme.border
-                border.width: 1
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-            }
-            contentItem: Text {
-                text: typeof faceController !== "undefined" && faceController.isScanning 
-                      ? "Scanning Faces..." 
-                      : scanFacesBtn.text
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontSmall
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
+        // Hamburger Menu Button
+        Rectangle {
+            id: menuButton
+            visible: hasScanned || isScanning || isLoaded
+            Layout.preferredWidth: 36
+            Layout.preferredHeight: 36
+            radius: Theme.radiusL
+            color: menuButtonMouse.containsMouse ? Theme.bgHover : "transparent"
+            border.color: menuButtonMouse.containsMouse ? Theme.accentGlow : Theme.border
+            border.width: 1
+            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: 150 } }
 
-        // Change Folder button
-        Button {
-            id: changeFolderBtn
-            text: "Change Folder"
-            visible: hasScanned && !isScanning
-            onClicked: {
-                if (typeof similarityController !== "undefined") {
-                    similarityController.resetState()
-                }
-                if (typeof scanController !== "undefined") {
-                    scanController.selectFolder()
-                }
+            Text {
+                anchors.centerIn: parent
+                text: "≡"
+                color: Theme.textPrimary
+                font.pixelSize: 22
+                // Minor vertical offset tweak to perfectly center the hamburger icon
+                anchors.verticalCenterOffset: -2
             }
-            background: Rectangle {
-                color: changeFolderBtn.hovered ? Theme.bgHover : "transparent"
-                radius: Theme.radiusL
-                border.color: changeFolderBtn.hovered ? Theme.accentGlow : Theme.border
-                border.width: 1
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-            }
-            contentItem: Text {
-                text: changeFolderBtn.text
-                color: Theme.textSecondary
-                font.pixelSize: Theme.fontSmall
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
 
-        // Rescan button
-        Button {
-            id: rescanButton
-            visible: hasScanned || isScanning
-            text: isScanning ? "Scanning... " + scanController.scanProgress + "%" : "Rescan"
-            enabled: !isScanning && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
-            onClicked: {
-                if (typeof scanController !== "undefined") {
-                    if (typeof similarityController !== "undefined") {
-                        similarityController.resetState()
+            MouseArea {
+                id: menuButtonMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: actionMenu.open()
+            }
+
+            Menu {
+                id: actionMenu
+                y: menuButton.height + 4
+                x: menuButton.width - width
+
+                MenuItem {
+                    text: "Change Folder"
+                    visible: hasScanned && !isScanning
+                    onTriggered: {
+                        if (typeof similarityController !== "undefined") {
+                            similarityController.resetState()
+                        }
+                        if (typeof scanController !== "undefined") {
+                            scanController.selectFolder()
+                        }
                     }
-                    scanController.startScan()
                 }
-            }
-            background: Rectangle {
-                color: {
-                    if (!rescanButton.enabled) return Theme.accentDisabled
-                    return rescanButton.hovered ? Theme.accentHover : Theme.accentSubtle
+
+                MenuItem {
+                    property bool isScanningProp: isScanning
+                    text: isScanningProp ? "Scanning... " + (typeof scanController !== "undefined" ? scanController.scanProgress : 0) + "%" : "Rescan"
+                    visible: hasScanned || isScanning
+                    enabled: !isScanningProp && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
+                    onTriggered: {
+                        if (typeof scanController !== "undefined") {
+                            if (typeof similarityController !== "undefined") {
+                                similarityController.resetState()
+                            }
+                            scanController.startScan()
+                        }
+                    }
                 }
-                radius: Theme.radiusL
-                Behavior on color { ColorAnimation { duration: 150 } }
-            }
-            contentItem: Text {
-                text: rescanButton.text
-                color: rescanButton.enabled ? Theme.textPrimary : Theme.textDisabled
-                font.pixelSize: Theme.fontSmall
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
 
-        // Clean Duplicates button
-        Button {
-            id: cleanDuplicatesBtn
-            property bool isRemoving: typeof scanController !== "undefined" && scanController.isRemovingDuplicates
-            property int progress: typeof scanController !== "undefined" ? scanController.duplicateProgress : 0
-            
-            text: isRemoving ? "Cleaning... " + progress + "%" : "Clean Duplicates"
-            visible: isLoaded
-            enabled: !isRemoving && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
-
-            onClicked: {
-                if (typeof scanController !== "undefined") {
-                    scanController.removeExactDuplicates()
+                MenuItem {
+                    property bool isRemoving: typeof scanController !== "undefined" && scanController.isRemovingDuplicates
+                    property int duplicateProgress: typeof scanController !== "undefined" ? scanController.duplicateProgress : 0
+                    text: isRemoving ? "Cleaning... " + duplicateProgress + "%" : "Clean Duplicates"
+                    visible: isLoaded
+                    enabled: !isRemoving && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
+                    onTriggered: {
+                        if (typeof scanController !== "undefined") {
+                            scanController.removeExactDuplicates()
+                        }
+                    }
                 }
-            }
 
-            background: Rectangle {
-                color: {
-                    if (!cleanDuplicatesBtn.enabled) return Theme.bgApp
-                    return cleanDuplicatesBtn.hovered ? Theme.bgHover : "transparent"
+                MenuItem {
+                    text: "Find Similar"
+                    visible: isLoaded
+                    enabled: typeof similarityController !== "undefined" && similarityController.similarityState !== "processing"
+                    onTriggered: {
+                        if (typeof similarityController !== "undefined") {
+                            similarityController.startSimilarityProcessing()
+                        }
+                    }
                 }
-                border.color: cleanDuplicatesBtn.hovered ? Theme.accentGlow : Theme.border
-                border.width: 1
-                radius: Theme.radiusL
-                Behavior on color { ColorAnimation { duration: 150 } }
-                Behavior on border.color { ColorAnimation { duration: 150 } }
-            }
-            contentItem: Text {
-                text: "🧹 " + cleanDuplicatesBtn.text
-                color: cleanDuplicatesBtn.enabled ? Theme.textPrimary : Theme.textDisabled
-                font.pixelSize: Theme.fontSmall
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
-
-        // Find Similar button
-        Button {
-            id: similarButton
-            text: "Find Similar"
-            visible: isLoaded
-            enabled: typeof similarityController !== "undefined" && similarityController.similarityState !== "processing"
-
-            onClicked: {
-                if (typeof similarityController !== "undefined") {
-                    similarityController.startSimilarityProcessing()
-                }
-            }
-
-            background: Rectangle {
-                color: {
-                    if (!similarButton.enabled) return Theme.accentDisabled
-                    return similarButton.hovered ? Theme.accentHover : Theme.accent
-                }
-                radius: Theme.radiusL
-                border.color: similarButton.hovered ? "#FFFFFF" : "transparent"
-                border.width: similarButton.hovered ? 1 : 0
-                Behavior on color { ColorAnimation { duration: 150 } }
                 
-                // Shimmer pulse animation when ready
-                SequentialAnimation on border.color {
-                    loops: Animation.Infinite
-                    running: similarButton.enabled && !similarButton.hovered
-                    ColorAnimation { from: "transparent"; to: Theme.accentGlow; duration: 1500; easing.type: Easing.InOutQuad }
-                    ColorAnimation { from: Theme.accentGlow; to: "transparent"; duration: 1500; easing.type: Easing.InOutQuad }
+                background: Rectangle {
+                    implicitWidth: 200
+                    color: Theme.bgPanel
+                    border.color: Theme.border
+                    radius: Theme.radiusM
                 }
-            }
-            contentItem: Text {
-                text: similarButton.text
-                color: similarButton.enabled ? Theme.textPrimary : Theme.textDisabled
-                font.pixelSize: Theme.fontSmall
-                font.bold: true
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
             }
         }
 

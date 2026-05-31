@@ -11,7 +11,7 @@ Item {
     property var currentGroup: ({})
 
     // Helper property to check if data is valid
-    property bool hasData: currentGroup && currentGroup.images && currentGroup.images.length > 0
+    property bool hasData: !!(currentGroup && currentGroup.images && currentGroup.images.length > 0)
 
     onCurrentGroupChanged: {
         // Trigger crossfade transition when group changes
@@ -75,8 +75,10 @@ Item {
             Layout.margins: Theme.gridSpacing
             clip: true
 
-            cellWidth: Theme.thumbnailSize + Theme.gridSpacing
-            cellHeight: Theme.thumbnailSize + Theme.gridSpacing
+            // Dynamic columns to perfectly fit available width and leave no blank patch on the right
+            property int columns: Math.max(1, Math.floor(width / (Theme.thumbnailSize + Theme.gridSpacing * 2)))
+            cellWidth: width / columns
+            cellHeight: cellWidth
 
             // Convert plain JS array to ListModel
             model: ListModel { id: dynamicModel }
@@ -93,24 +95,30 @@ Item {
                 }
             }
 
-            delegate: ImageCard {
-                width: groupGrid.cellWidth - Theme.gridSpacing
-                height: groupGrid.cellHeight - Theme.gridSpacing
-                thumbnailSource: model.thumbnailPath || ""
-                fileName: model.fileName || ""
-                imageId: model.imageId || -1
-                displayRotation: model.displayRotation || 0
-                
-                onRequestPreview: {
-                    if (typeof globalPreviewModal !== "undefined" && reviewRoot.currentGroup && reviewRoot.currentGroup.images) {
-                        var list = []
-                        for (var i = 0; i < reviewRoot.currentGroup.images.length; i++) {
-                            list.push({
-                                source: reviewRoot.currentGroup.images[i].originalPath,
-                                fileName: reviewRoot.currentGroup.images[i].fileName || ""
-                            })
+            delegate: Item {
+                width: groupGrid.cellWidth
+                height: groupGrid.cellHeight
+
+                ImageCard {
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.gridSpacing
+                    height: parent.height - Theme.gridSpacing
+                    thumbnailSource: model.thumbnailPath || ""
+                    fileName: model.fileName || ""
+                    imageId: model.imageId || -1
+                    displayRotation: model.displayRotation || 0
+                    
+                    onRequestPreview: {
+                        if (typeof globalPreviewModal !== "undefined" && reviewRoot.currentGroup && reviewRoot.currentGroup.images) {
+                            var list = []
+                            for (var i = 0; i < reviewRoot.currentGroup.images.length; i++) {
+                                list.push({
+                                    source: reviewRoot.currentGroup.images[i].originalPath,
+                                    fileName: reviewRoot.currentGroup.images[i].fileName || ""
+                                })
+                            }
+                            globalPreviewModal.openPreviewList(list, index)
                         }
-                        globalPreviewModal.openPreviewList(list, index)
                     }
                 }
             }

@@ -47,15 +47,11 @@ def run_migrations(db_path_str: str = "data/proximi.db"):
             conn.commit()
             logger.info("DB migration completed successfully (display_rotation column).")
 
-        # Check if new tables from Phase 3 (People/Faces) exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='faces'")
-        faces_exists = cursor.fetchone()
-
         # Milestone 4: Check if 'trash_records' exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='trash_records'")
         trash_exists = cursor.fetchone()
         
-        if not trash_exists or not faces_exists:
+        if not trash_exists:
             logger.info("Running DB migration: Creating missing tables via SQLAlchemy.")
             from app.database.connection import db
             from app.database.base import Base
@@ -99,11 +95,6 @@ def _ensure_indexes(cursor) -> None:
         ("idx_group_members_group",
          "CREATE INDEX IF NOT EXISTS idx_group_members_group "
          "ON group_members(group_id)"),
-
-        # Fast per-person face lookups (people view)
-        ("idx_faces_person",
-         "CREATE INDEX IF NOT EXISTS idx_faces_person "
-         "ON faces(person_id)"),
 
         # Fast staged-for-trash queries (cleanup pipeline)
         ("idx_images_staged",

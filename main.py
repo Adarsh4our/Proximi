@@ -26,7 +26,6 @@ from app.database.group_repository import GroupRepository
 from app.database.trash_repository import TrashRepository
 from app.services.trash_service import TrashService
 from app.controllers.cleanup_controller import CleanupController
-from app.controllers.face_controller import FaceController
 from app.services.duplicate_service import DuplicateService
 
 def main():
@@ -81,11 +80,9 @@ def main():
     # 5. Initialize Controllers
     app_controller = AppController()
     settings_controller = SettingsController(settings_service)
-    face_controller = FaceController()  # Created early — injected into scan_controller for pipelined face detection
     scan_controller = ScanController(
         scan_service, duplicate_service, image_repository,
         debug_service,
-        face_controller=face_controller,
         settings_controller=settings_controller,
     )
     debug_controller = DebugController(debug_service)
@@ -110,7 +107,6 @@ def main():
     context.setContextProperty("debugController", debug_controller)
     context.setContextProperty("similarityController", similarity_controller)
     context.setContextProperty("cleanupController", cleanup_controller)
-    context.setContextProperty("faceController", face_controller)
     
     # 7. Load QML
     main_qml = ui_dir / "Main.qml"

@@ -1,7 +1,8 @@
 from PySide6.QtCore import QObject, Slot, Signal, Property, QThreadPool
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QAbstractItemView
 
 from pathlib import Path
+import os
 
 from app.services.scan_service import ScanService
 from app.services.scan_worker import ScanWorker
@@ -56,6 +57,7 @@ class ScanController(QObject):
 
     # ── Signals ───────────────────────────────────────────────────────
     currentFolderChanged = Signal()
+    scanTargetsChanged = Signal()
     scanStateChanged = Signal()
     scanProgressChanged = Signal()
     scannedCountChanged = Signal()
@@ -72,15 +74,14 @@ class ScanController(QObject):
     duplicateRemovalError = Signal(str)
     isRemovingDuplicatesChanged = Signal()
 
-    def __init__(self, scan_service: ScanService, duplicate_service: DuplicateService, image_repository: ImageRepository, debug_service: DebugService = None, face_controller=None, settings_controller=None, parent=None):
+    def __init__(self, scan_service: ScanService, duplicate_service: DuplicateService, image_repository: ImageRepository, debug_service: DebugService = None, settings_controller=None, parent=None):
         super().__init__(parent)
         self._scan_service = scan_service
         self._duplicate_service = duplicate_service
         self._image_repository = image_repository
         self._debug_service = debug_service
-        self._face_controller = face_controller
         self._settings_controller = settings_controller
-        self._current_folder = ""
+        self._scan_targets = []        # list of strings (folders/files)
         self._scan_state = "empty"     # empty | scanning | loaded | restored
         self._scan_progress = 0        # 0-100
         self._scanned_count = 0
@@ -95,7 +96,15 @@ class ScanController(QObject):
 
     @Property(str, notify=currentFolderChanged)
     def currentFolder(self) -> str:
-        return self._current_folder
+        if not self._scan_targets:
+            return ""
+        if len(self._scan_targets) == 1:
+            return self._scan_targets[0]
+        return os.path.commonpath(self._scan_targets)
+
+    @Property(list, notify=scanTargetsChanged)
+    def scanTargets(self) -> list:
+        return self._scan_targets
 
     @Property(str, notify=scanStateChanged)
     def scanState(self) -> str:
@@ -129,29 +138,67 @@ class ScanController(QObject):
 
     @Slot()
     def selectFolder(self):
-        """Open native folder picker, update currentFolder, and auto-start scan."""
-        folder = QFileDialog.getExistingDirectory(
-            None,
-            "Select Image Folder",
-            "",
-            QFileDialog.Option.DontUseNativeDialog   # Shows files inside folders for better UX
-        )
-        if folder:
-            is_new_folder = self._current_folder != folder
-            self._current_folder = folder
-            if is_new_folder:
-                self._has_scanned_current_folder = False
-                self.hasScannedCurrentFolderChanged.emit()
+        """For compatibility: Opens a folder picker and adds to targets."""
+        self.addFolderTarget()
+
+    @Slot()
+    @Slot()
+    @Slot()
+    def addFolderTarget(self):
+        """Open native-looking folder picker and allow multiple directory selection."""
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Select Folders to Scan")
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        
+        # Hack to enable multiple selection on the QFileDialog
+        views = dialog.findChildren(QAbstractItemView)
+        for view in views:
+            view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            
+        if dialog.exec():
+            folders = dialog.selectedFiles()
+            added_any = False
+            for folder in folders:
+                folder_path = str(Path(folder).resolve())
+                if folder_path not in self._scan_targets:
+                    self._scan_targets.append(folder_path)
+                    added_any = True
+                    logger.info(f"Added folder target: {folder_path}")
+            
+            if added_any:
+                self.scanTargetsChanged.emit()
+                self.currentFolderChanged.emit()
+
+    @Slot()
+    def addFileTargets(self):
+        """Deprecated: Now forwards to unified addFolderTarget for both files and folders."""
+        self.addFolderTarget()
+
+    @Slot(str)
+    def removeTarget(self, path: str):
+        """Remove a target from scanTargets."""
+        if path in self._scan_targets:
+            self._scan_targets.remove(path)
+            self.scanTargetsChanged.emit()
             self.currentFolderChanged.emit()
-            logger.info(f"Folder selected: {folder}")
-            # Auto-start scan for the selected folder
-            self.startScan()
+            logger.info(f"Removed target: {path}")
+
+    @Slot()
+    def clearTargets(self):
+        """Clear all targets."""
+        if self._scan_targets:
+            self._scan_targets = []
+            self.scanTargetsChanged.emit()
+            self.currentFolderChanged.emit()
+            logger.info("Cleared all scan targets.")
 
     @Slot()
     def startScan(self):
-        """Launch an async scan of the currently selected folder."""
-        if not self._current_folder:
-            logger.warning("No folder selected — cannot start scan.")
+        """Launch an async scan of the currently selected targets."""
+        if not self._scan_targets:
+            logger.warning("No targets selected — cannot start scan.")
             return
 
         if self._scan_state == "scanning":
@@ -173,15 +220,9 @@ class ScanController(QObject):
         self.totalImagesChanged.emit()
         self.scanStarted.emit()
 
-        # Pre-warm the InsightFace ML model during the scan.
-        # The model takes ~40s to load — by starting now, it overlaps with the
-        # scan's I/O work and is ready instantly when face detection begins.
-        if self._face_controller is not None:
-            self._face_controller.prewarmModel()
-            logger.info("InsightFace model pre-warming started (overlaps with scan).")
 
         # Create worker and connect signals
-        self._worker = ScanWorker(self._scan_service, self._current_folder)
+        self._worker = ScanWorker(self._scan_service, self._scan_targets)
         self._worker.signals.image_ready.connect(self._on_image_ready)
         self._worker.signals.progress.connect(self._on_progress)
         self._worker.signals.finished.connect(self._on_finished)
@@ -189,7 +230,7 @@ class ScanController(QObject):
 
         # Submit to thread pool
         QThreadPool.globalInstance().start(self._worker)
-        logger.info(f"Scan started for '{self._current_folder}'")
+        logger.info(f"Scan started for targets: {self._scan_targets}")
 
     @Slot()
     def removeExactDuplicates(self):
@@ -230,16 +271,7 @@ class ScanController(QObject):
 
     @Slot()
     def loadPersistedSession(self):
-        """Restore the previous scan session on app startup (M12).
-
-        Called from Main.qml Component.onCompleted when session persistence
-        is enabled. Emits imageReady for every stored image so the grid
-        populates immediately without a re-scan.
-
-        No-ops if:
-          - Persistence is disabled in settings
-          - No images are stored in the database
-        """
+        """Restore the previous scan session on app startup (M12)."""
         # Check persistence flag via settings controller
         persistence_on = False
         if self._settings_controller is not None:
@@ -262,9 +294,13 @@ class ScanController(QObject):
         # Restore the folder path from the last scan session
         last_folder = self._image_repository.get_latest_scan_folder()
         if last_folder:
-            self._current_folder = last_folder
+            if ";" in last_folder:
+                self._scan_targets = [p.strip() for p in last_folder.split(";") if p.strip()]
+            else:
+                self._scan_targets = [last_folder] if last_folder else []
             self._has_scanned_current_folder = True
             self.currentFolderChanged.emit()
+            self.scanTargetsChanged.emit()
             self.hasScannedCurrentFolderChanged.emit()
 
         # Emit each image into the grid
@@ -321,11 +357,6 @@ class ScanController(QObject):
         self.scanFinished.emit(total_processed)
         logger.info(f"Scan finished: {total_processed} images processed.")
 
-        # Auto-trigger face detection now that scan is done.
-        # The model was pre-warmed during the scan, so init is ~instant.
-        if self._face_controller is not None and total_processed > 0:
-            logger.info("Auto-triggering face detection (model was pre-warmed during scan).")
-            self._face_controller.startFaceScan()
 
     def _on_error(self, error_msg: str):
         """Handle scan failure."""

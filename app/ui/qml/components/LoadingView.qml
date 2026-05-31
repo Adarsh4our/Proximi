@@ -18,20 +18,23 @@ Item {
         anchors.bottomMargin: 100  // Reserve space for progress info
         clip: true
 
-        cellWidth: Theme.thumbnailSize + Theme.gridSpacing
-        cellHeight: Theme.thumbnailSize + Theme.gridSpacing
+        // Match dynamic column calculation of main grid so there's no layout jump when scan completes
+        property int columns: Math.max(1, Math.floor(width / (Theme.thumbnailSize + Theme.gridSpacing * 2)))
+        cellWidth: width / columns
+        cellHeight: cellWidth
         interactive: false
 
         model: 12
 
         delegate: Item {
-            width: skeletonGrid.cellWidth - Theme.gridSpacing
-            height: skeletonGrid.cellHeight - Theme.gridSpacing
+            width: skeletonGrid.cellWidth
+            height: skeletonGrid.cellHeight
 
             Rectangle {
                 id: skeletonCard
-                anchors.fill: parent
-                anchors.margins: 2
+                anchors.centerIn: parent
+                width: parent.width - Theme.gridSpacing
+                height: parent.height - Theme.gridSpacing
                 radius: Theme.radiusS
                 color: Theme.bgCard
                 clip: true

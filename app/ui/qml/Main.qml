@@ -17,8 +17,7 @@ ApplicationWindow {
     color: Theme.bgApp
     font.family: Theme.fontFamily
 
-    // ── Application State ────────────────────────────────────────────
-    property string currentView: "photos" // "photos" or "people"
+
 
     // ── Image data model ─────────────────────────────────────────────
     ListModel {
@@ -94,10 +93,6 @@ ApplicationWindow {
         TopBar {
             Layout.fillWidth: true
             Layout.preferredHeight: 56
-            currentView: root.currentView
-            onViewToggled: {
-                root.currentView = (root.currentView === "photos") ? "people" : "photos"
-            }
         }
 
         Rectangle {
@@ -146,17 +141,12 @@ ApplicationWindow {
 
                 ContentArea {
                     anchors.fill: parent
-                    visible: root.currentView === "photos"
+                    visible: true
                     scanState: typeof scanController !== "undefined" ? scanController.scanState : "empty"
                     imageModel: imageListModel
                     scanProgress: typeof scanController !== "undefined" ? scanController.scanProgress : 0
                     scannedCount: typeof scanController !== "undefined" ? scanController.scannedCount : 0
                     totalImages: typeof scanController !== "undefined" ? scanController.totalImages : 0
-                }
-
-                PeopleView {
-                    anchors.fill: parent
-                    visible: root.currentView === "people"
                 }
 
                 // Debug panel overlays on right edge of content area

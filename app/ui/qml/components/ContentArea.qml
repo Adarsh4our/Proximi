@@ -53,9 +53,10 @@ Item {
 
         Behavior on opacity { NumberAnimation { duration: Theme.animPage; easing.type: Easing.OutCubic } }
 
-        // Increased spacing for a less cramped look
-        cellWidth: Theme.thumbnailSize + 12
-        cellHeight: Theme.thumbnailSize + 12
+        // Dynamic columns to perfectly fit available width and leave no blank patch on the right
+        property int columns: Math.max(1, Math.floor(width / (Theme.thumbnailSize + Theme.gridSpacing * 2)))
+        cellWidth: width / columns
+        cellHeight: cellWidth
         model: contentRoot.imageModel
         cacheBuffer: 4000  // Pre-render ~20 rows outside viewport for smooth 10k+ image scrolling
 
@@ -77,17 +78,23 @@ Item {
             }
         }
 
-        delegate: ImageCard {
-            width: imageGrid.cellWidth - Theme.gridSpacing
-            height: imageGrid.cellHeight - Theme.gridSpacing
-            thumbnailSource: model.thumbnailPath || ""
-            fileName: model.fileName || ""
-            imageId: model.imageId || -1
-            isFlicking: imageGrid.flicking  // Disable smooth filter during fast scroll
+        delegate: Item {
+            width: imageGrid.cellWidth
+            height: imageGrid.cellHeight
 
-            onRequestPreview: {
-                if (typeof globalPreviewModal !== "undefined") {
-                    globalPreviewModal.openPreview(model.originalPath)
+            ImageCard {
+                anchors.centerIn: parent
+                width: parent.width - Theme.gridSpacing
+                height: parent.height - Theme.gridSpacing
+                thumbnailSource: model.thumbnailPath || ""
+                fileName: model.fileName || ""
+                imageId: model.imageId || -1
+                isFlicking: imageGrid.flicking  // Disable smooth filter during fast scroll
+
+                onRequestPreview: {
+                    if (typeof globalPreviewModal !== "undefined") {
+                        globalPreviewModal.openPreview(model.originalPath)
+                    }
                 }
             }
         }

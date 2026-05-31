@@ -23,6 +23,7 @@ Item {
         imageFileName = fileName || extractFileName(src)
         imageList = []      // Single-image mode
         currentIndex = 0
+        if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         _show()
     }
 
@@ -33,18 +34,19 @@ Item {
             imageSource = list[currentIndex].source || ""
             imageFileName = list[currentIndex].fileName || extractFileName(imageSource)
         }
+        if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         _show()
     }
 
     function closePreview() {
-        imageContainer.imageScale = 0.92
+        if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         root.opacity = 0
     }
 
     function _show() {
         root.visible = true
         root.opacity = 1
-        imageContainer.imageScale = 1.0
+        if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         focusItem.forceActiveFocus()
     }
 
@@ -57,6 +59,8 @@ Item {
     function _navigateTo(index) {
         if (imageList.length === 0) return
         currentIndex = (index + imageList.length) % imageList.length
+        
+        if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         
         // Manual crossfade logic
         previewImage.opacity = 0.5
@@ -90,67 +94,159 @@ Item {
     }
 
     // ── Image Container with scale animation ──────────────────────────
-    Item {
-        id: imageContainer
+    Flickable {
+        id: flickable
         anchors.fill: parent
         anchors.topMargin: 56     // space for top bar
         anchors.bottomMargin: 64  // space for info bar
         anchors.leftMargin: imageList.length > 1 ? 64 : 16
         anchors.rightMargin: imageList.length > 1 ? 64 : 16
 
-        property real imageScale: 1.0
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: zoomScale > 1.0
 
-        Behavior on imageScale {
-            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-        }
+        property real zoomScale: 1.0
+        property real minZoom: 1.0
+        property real maxZoom: 5.0
 
-        Image {
-            id: previewImage
-            anchors.centerIn: parent
-            width: parent.width
-            height: parent.height
-            source: root.imageSource
-            fillMode: Image.PreserveAspectFit
-            autoTransform: true
-            asynchronous: true
-            smooth: true
-            mipmap: true
-            scale: imageContainer.imageScale
-            sourceSize.width: imageContainer.width
-            sourceSize.height: imageContainer.height
+        contentWidth: Math.max(width, width * zoomScale)
+        contentHeight: Math.max(height, height * zoomScale)
 
-            Behavior on scale {
-                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-            }
-            
-            Behavior on opacity {
-                NumberAnimation { duration: 120 }
+        onZoomScaleChanged: {
+            if (zoomScale === 1.0) {
+                contentX = 0
+                contentY = 0
             }
         }
 
-        // Loading spinner
         Item {
-            anchors.centerIn: parent
-            visible: previewImage.status === Image.Loading
-            width: 56
-            height: 56
+            id: contentWrapper
+            width: flickable.contentWidth
+            height: flickable.contentHeight
 
-            Rectangle {
-                anchors.fill: parent
-                radius: width / 2
-                color: "#33FFFFFF"
-            }
-
-            Text {
+            Image {
+                id: previewImage
                 anchors.centerIn: parent
-                text: "⏳"
-                font.pixelSize: 24
+                width: flickable.width
+                height: flickable.height
+                source: root.imageSource
+                fillMode: Image.PreserveAspectFit
+                autoTransform: true
+                asynchronous: true
+                smooth: true
+                mipmap: true
+                scale: flickable.zoomScale
+
+                Behavior on scale {
+                    NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                }
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 120 }
+                }
             }
 
-            RotationAnimation on rotation {
-                loops: Animation.Infinite
-                from: 0; to: 360
-                duration: 1200
+            // Loading spinner
+            Item {
+                anchors.centerIn: parent
+                visible: previewImage.status === Image.Loading
+                width: 56
+                height: 56
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: "#33FFFFFF"
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "⏳"
+                    font.pixelSize: 24
+                }
+
+                RotationAnimation on rotation {
+                    loops: Animation.Infinite
+                    from: 0; to: 360
+                    duration: 1200
+                }
+            }
+        }
+
+        // MouseArea for scroll-to-zoom and dragging (panning)
+        // MouseArea for scroll-to-zoom and dragging (panning)
+        MouseArea {
+            id: zoomMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            
+            onClicked: (mouse) => {
+                focusItem.forceActiveFocus() // Ensure keyboard capture works
+                
+                // Map mouse coordinates to the previewImage
+                var mapped = zoomMouseArea.mapToItem(previewImage, mouse.x, mouse.y)
+                
+                // Calculate actual visible image boundaries (PreserveAspectFit centers it)
+                var paintedW = previewImage.paintedWidth
+                var paintedH = previewImage.paintedHeight
+                var imgX = (previewImage.width - paintedW) / 2
+                var imgY = (previewImage.height - paintedH) / 2
+                
+                if (mapped.x < imgX || mapped.x > imgX + paintedW ||
+                    mapped.y < imgY || mapped.y > imgY + paintedH) {
+                    root.closePreview()
+                }
+            }
+
+            // Double click to zoom in or out
+            onDoubleClicked: {
+                if (flickable.zoomScale > 1.0) {
+                    flickable.zoomScale = 1.0
+                } else {
+                    flickable.zoomScale = 2.5
+                }
+            }
+
+            onWheel: (wheel) => {
+                focusItem.forceActiveFocus() // Keep focus for arrow keys
+                
+                var zoomStep = 1.15
+                var oldZoom = flickable.zoomScale
+                var newZoom = oldZoom
+                if (wheel.angleDelta.y > 0) {
+                    newZoom = Math.min(oldZoom * zoomStep, flickable.maxZoom)
+                } else {
+                    newZoom = Math.max(oldZoom / zoomStep, flickable.minZoom)
+                }
+
+                if (newZoom !== oldZoom) {
+                    var mouseX = wheel.x
+                    var mouseY = wheel.y
+
+                    // Point under mouse in content coordinates
+                    var contentXBefore = flickable.contentX + mouseX
+                    var contentYBefore = flickable.contentY + mouseY
+
+                    // Relative position (0.0 to 1.0) of that point
+                    var ratioX = contentXBefore / flickable.contentWidth
+                    var ratioY = contentYBefore / flickable.contentHeight
+
+                    // Apply zoom scale
+                    flickable.zoomScale = newZoom
+                    
+                    // Pre-calculate new dimensions
+                    var newContentWidth = Math.max(flickable.width, flickable.width * newZoom)
+                    var newContentHeight = Math.max(flickable.height, flickable.height * newZoom)
+
+                    // Re-align that relative position to the mouse cursor
+                    var newContentX = (ratioX * newContentWidth) - mouseX
+                    var newContentY = (ratioY * newContentHeight) - mouseY
+
+                    flickable.contentX = Math.max(0, Math.min(newContentX, newContentWidth - flickable.width))
+                    flickable.contentY = Math.max(0, Math.min(newContentY, newContentHeight - flickable.height))
+                }
             }
         }
     }
@@ -338,11 +434,31 @@ Item {
                     event.accepted = true
                     break
                 case Qt.Key_Left:
-                    root._navigateTo(root.currentIndex - 1)
+                    if (flickable.zoomScale > 1.0) {
+                        flickable.contentX = Math.max(0, flickable.contentX - 60)
+                    } else {
+                        root._navigateTo(root.currentIndex - 1)
+                    }
                     event.accepted = true
                     break
                 case Qt.Key_Right:
-                    root._navigateTo(root.currentIndex + 1)
+                    if (flickable.zoomScale > 1.0) {
+                        flickable.contentX = Math.min(flickable.contentWidth - flickable.width, flickable.contentX + 60)
+                    } else {
+                        root._navigateTo(root.currentIndex + 1)
+                    }
+                    event.accepted = true
+                    break
+                case Qt.Key_Up:
+                    if (flickable.zoomScale > 1.0) {
+                        flickable.contentY = Math.max(0, flickable.contentY - 60)
+                    }
+                    event.accepted = true
+                    break
+                case Qt.Key_Down:
+                    if (flickable.zoomScale > 1.0) {
+                        flickable.contentY = Math.min(flickable.contentHeight - flickable.height, flickable.contentY + 60)
+                    }
                     event.accepted = true
                     break
             }
