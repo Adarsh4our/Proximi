@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import themes 1.0
 
-Item {
+FocusScope {
     id: root
     visible: false
     opacity: 0
@@ -47,7 +47,15 @@ Item {
         root.visible = true
         root.opacity = 1
         if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
-        focusItem.forceActiveFocus()
+        focusTimer.restart()
+    }
+
+    // Small delay so the modal is fully visible before stealing focus
+    Timer {
+        id: focusTimer
+        interval: 50
+        repeat: false
+        onTriggered: focusItem.forceActiveFocus()
     }
 
     function extractFileName(path) {
@@ -423,9 +431,11 @@ Item {
     }
 
     // ── Keyboard Capture ──────────────────────────────────────────────
+    // Fills the entire modal so it always has a valid geometry for focus
     Item {
         id: focusItem
-        focus: root.visible
+        anchors.fill: parent
+        focus: true
         Keys.onPressed: (event) => {
             switch (event.key) {
                 case Qt.Key_Escape:

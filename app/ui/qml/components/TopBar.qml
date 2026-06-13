@@ -26,12 +26,27 @@ Rectangle {
 
         // App title
         Text {
+            id: appTitle
             text: "Proximi"
-            color: Theme.textPrimary
+            color: appTitleMouse.containsMouse && appTitleMouse.canGoHome ? Theme.accentHover : Theme.textPrimary
             font.pixelSize: Theme.fontDisplay
             font.weight: Font.Bold
             font.letterSpacing: 1.2
             Layout.alignment: Qt.AlignVCenter
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            MouseArea {
+                id: appTitleMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                property bool canGoHome: typeof similarityController !== "undefined" && similarityController.similarityState === "ready"
+                cursorShape: canGoHome ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                    if (canGoHome) {
+                        similarityController.resetState()
+                    }
+                }
+            }
         }
 
         // Separator (always visible)
@@ -45,14 +60,20 @@ Rectangle {
 
         // ── "All Photos" pill — shown after scan ─────────────────────
         Rectangle {
-            visible: (hasScanned || isScanning) && !isInGroupReview
+            id: allPhotosPill
+            visible: hasScanned || isScanning
             Layout.preferredHeight: 28
             Layout.preferredWidth: allPhotosRow.width + 20
             radius: 14
-            color: Theme.accent
-
+            
             property bool isInGroupReview: typeof similarityController !== "undefined"
                                            && similarityController.similarityState === "ready"
+                                           
+            color: isInGroupReview 
+                   ? (allPhotosMouse.containsMouse ? Theme.bgCard : Theme.bgHover) 
+                   : Theme.accent
+                   
+            Behavior on color { ColorAnimation { duration: 150 } }
 
             Row {
                 id: allPhotosRow
@@ -60,21 +81,23 @@ Rectangle {
                 spacing: 6
 
                 Text {
-                    text: "🖼"
-                    font.pixelSize: 12
+                    text: allPhotosPill.isInGroupReview ? "‹" : "🖼"
+                    color: allPhotosPill.isInGroupReview ? Theme.textSecondary : Theme.textPrimary
+                    font.pixelSize: allPhotosPill.isInGroupReview ? 16 : 12
+                    font.bold: allPhotosPill.isInGroupReview
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Text {
-                    text: "All Photos"
-                    color: Theme.textPrimary
+                    text: allPhotosPill.isInGroupReview ? "Home" : "All Photos"
+                    color: allPhotosPill.isInGroupReview ? Theme.textSecondary : Theme.textPrimary
                     font.pixelSize: Theme.fontSmall
                     font.bold: true
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Rectangle {
-                    visible: typeof scanController !== "undefined" && scanController.scannedCount > 0
+                    visible: !allPhotosPill.isInGroupReview && typeof scanController !== "undefined" && scanController.scannedCount > 0
                     width: pillCountText.implicitWidth + 10
                     height: 18
                     radius: 9
@@ -88,6 +111,18 @@ Rectangle {
                         color: Theme.textPrimary
                         font.pixelSize: 10
                         font.bold: true
+                    }
+                }
+            }
+
+            MouseArea {
+                id: allPhotosMouse
+                anchors.fill: parent
+                hoverEnabled: allPhotosPill.isInGroupReview
+                cursorShape: allPhotosPill.isInGroupReview ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                    if (allPhotosPill.isInGroupReview) {
+                        similarityController.resetState()
                     }
                 }
             }
@@ -176,68 +211,459 @@ Rectangle {
                 onClicked: actionMenu.open()
             }
 
-            Menu {
+            // ── Custom Dropdown Menu ───────────────────────────────────
+            Popup {
                 id: actionMenu
-                y: menuButton.height + 4
+                y: menuButton.height + 8
                 x: menuButton.width - width
+                width: 220
+                padding: 0
+                modal: false
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-                MenuItem {
-                    text: "Change Folder"
-                    visible: hasScanned && !isScanning
-                    onTriggered: {
-                        if (typeof similarityController !== "undefined") {
-                            similarityController.resetState()
-                        }
-                        if (typeof scanController !== "undefined") {
-                            scanController.selectFolder()
-                        }
-                    }
+                enter: Transition {
+                    NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 140; easing.type: Easing.OutCubic }
+                    NumberAnimation { property: "scale"; from: 0.92; to: 1.0; duration: 140; easing.type: Easing.OutCubic }
+                }
+                exit: Transition {
+                    NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 100; easing.type: Easing.InCubic }
                 }
 
-                MenuItem {
-                    property bool isScanningProp: isScanning
-                    text: isScanningProp ? "Scanning... " + (typeof scanController !== "undefined" ? scanController.scanProgress : 0) + "%" : "Rescan"
-                    visible: hasScanned || isScanning
-                    enabled: !isScanningProp && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
-                    onTriggered: {
-                        if (typeof scanController !== "undefined") {
-                            if (typeof similarityController !== "undefined") {
-                                similarityController.resetState()
-                            }
-                            scanController.startScan()
-                        }
-                    }
-                }
-
-                MenuItem {
-                    property bool isRemoving: typeof scanController !== "undefined" && scanController.isRemovingDuplicates
-                    property int duplicateProgress: typeof scanController !== "undefined" ? scanController.duplicateProgress : 0
-                    text: isRemoving ? "Cleaning... " + duplicateProgress + "%" : "Clean Duplicates"
-                    visible: isLoaded
-                    enabled: !isRemoving && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
-                    onTriggered: {
-                        if (typeof scanController !== "undefined") {
-                            scanController.removeExactDuplicates()
-                        }
-                    }
-                }
-
-                MenuItem {
-                    text: "Find Similar"
-                    visible: isLoaded
-                    enabled: typeof similarityController !== "undefined" && similarityController.similarityState !== "processing"
-                    onTriggered: {
-                        if (typeof similarityController !== "undefined") {
-                            similarityController.startSimilarityProcessing()
-                        }
-                    }
-                }
-                
                 background: Rectangle {
-                    implicitWidth: 200
-                    color: Theme.bgPanel
-                    border.color: Theme.border
-                    radius: Theme.radiusM
+                    color: "#1A1A26"
+                    radius: Theme.radiusL
+                    border.color: "#35354A"
+                    border.width: 1
+
+                    // Top accent line
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.topMargin: 0
+                        height: 2
+                        radius: 2
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "transparent" }
+                            GradientStop { position: 0.4; color: Theme.accent }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Drop shadow layer
+                    layer.enabled: true
+                    layer.effect: null
+                }
+
+                contentItem: Column {
+                    spacing: 0
+                    topPadding: 8
+                    bottomPadding: 8
+
+                    // ── Add More Files ─────────────────────────────────
+                    Rectangle {
+                        id: menuItemAddFiles
+                        visible: hasScanned || isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        color: addFilesMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: addFilesMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🖼️"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Add More Files"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Pick individual image files"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: addFilesMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") scanController.addFileTargets()
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: hasScanned || isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Add More Folder ────────────────────────────────
+                    Rectangle {
+                        id: menuItemAddFolder
+                        visible: hasScanned || isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        color: addFolderMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: addFolderMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "📂"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Add More Folder"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Include another photo folder"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: addFolderMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") scanController.addFolderTarget()
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: hasScanned || isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Change Folder ──────────────────────────────────
+                    Rectangle {
+
+                        id: menuItemChangeFolder
+                        visible: hasScanned && !isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        color: changeFolderMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: changeFolderMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "📁"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Change Folder"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Select a new photo folder"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: changeFolderMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof similarityController !== "undefined") similarityController.resetState()
+                                if (typeof scanController !== "undefined") scanController.selectFolder()
+                            }
+                        }
+                    }
+
+                    // Divider after Change Folder
+                    Rectangle {
+                        visible: hasScanned && !isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Rescan ─────────────────────────────────────────
+                    Rectangle {
+                        id: menuItemRescan
+                        visible: hasScanned || isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        property bool isScanningProp: isScanning
+                        property bool isEnabled: !isScanningProp && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
+                        color: (rescanMouse.containsMouse && isEnabled) ? "#2A2A3E" : "transparent"
+                        opacity: isEnabled ? 1.0 : 0.45
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: rescanMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🔄"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: menuItemRescan.isScanningProp
+                                          ? "Scanning... " + (typeof scanController !== "undefined" ? scanController.scanProgress : 0) + "%"
+                                          : "Rescan"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Re-index all images"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: rescanMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: menuItemRescan.isEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (!menuItemRescan.isEnabled) return
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") {
+                                    if (typeof similarityController !== "undefined") similarityController.resetState()
+                                    scanController.startScan()
+                                }
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: hasScanned || isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Clean Duplicates ───────────────────────────────
+                    Rectangle {
+                        id: menuItemClean
+                        visible: isLoaded
+                        width: 220
+                        height: visible ? 44 : 0
+                        property bool isRemoving: typeof scanController !== "undefined" && scanController.isRemovingDuplicates
+                        property int duplicateProgress: typeof scanController !== "undefined" ? scanController.duplicateProgress : 0
+                        property bool isEnabled: !isRemoving && (typeof similarityController === "undefined" || similarityController.similarityState !== "processing")
+                        color: (cleanMouse.containsMouse && isEnabled) ? "#2A2A3E" : "transparent"
+                        opacity: isEnabled ? 1.0 : 0.45
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: cleanMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🧹"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: menuItemClean.isRemoving
+                                          ? "Cleaning... " + menuItemClean.duplicateProgress + "%"
+                                          : "Clean Duplicates"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Remove exact duplicate files"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: cleanMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: menuItemClean.isEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (!menuItemClean.isEnabled) return
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") scanController.removeExactDuplicates()
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: isLoaded
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Find Similar ───────────────────────────────────
+                    Rectangle {
+                        id: menuItemSimilar
+                        visible: isLoaded
+                        width: 220
+                        height: visible ? 44 : 0
+                        property bool isEnabled: typeof similarityController !== "undefined" && similarityController.similarityState !== "processing"
+                        color: (similarMouse.containsMouse && isEnabled) ? "#2A2A3E" : "transparent"
+                        opacity: isEnabled ? 1.0 : 0.45
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: similarMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "✨"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Find Similar"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Group near-duplicate photos"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: similarMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: menuItemSimilar.isEnabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                                if (!menuItemSimilar.isEnabled) return
+                                actionMenu.close()
+                                if (typeof similarityController !== "undefined") similarityController.startSimilarityProcessing()
+                            }
+                        }
+                    }
                 }
             }
         }

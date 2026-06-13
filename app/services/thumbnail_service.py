@@ -89,6 +89,9 @@ class ThumbnailService:
                 # Resize preserving aspect ratio
                 img.thumbnail((THUMBNAIL_MAX_SIZE, THUMBNAIL_MAX_SIZE), PILImage.LANCZOS)
 
+                # Ensure cache directory exists (may have been deleted after service init)
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+
                 # Save as WEBP — optimized format with better compression
                 img.save(str(cache_path), "WEBP", quality=THUMBNAIL_QUALITY, method=4)
 

@@ -25,13 +25,15 @@ class ScanWorker(QRunnable):
     Supports future cancellation via cancel() / _cancelled flag.
     """
 
-    def __init__(self, scan_service: ScanService, folder_path: str):
+    def __init__(self, scan_service: ScanService, folder_path):
         super().__init__()
         self.scan_service = scan_service
-        self.folder_path = folder_path
+        # Accept list or single string
+        self.folder_path = folder_path if isinstance(folder_path, list) else [folder_path]
         self.signals = ScanWorkerSignals()
         self._cancelled = False
         self.setAutoDelete(True)
+
 
     def cancel(self):
         """Request cancellation of the running scan.

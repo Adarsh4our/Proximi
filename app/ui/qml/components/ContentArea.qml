@@ -93,7 +93,21 @@ Item {
 
                 onRequestPreview: {
                     if (typeof globalPreviewModal !== "undefined") {
-                        globalPreviewModal.openPreview(model.originalPath)
+                        // Build the full image list so arrow-key navigation works
+                        var list = []
+                        var clickedIndex = 0
+                        var m = contentRoot.imageModel
+                        for (var i = 0; i < m.count; i++) {
+                            var item = m.get(i)
+                            list.push({
+                                source: item.originalPath || "",
+                                fileName: item.fileName || ""
+                            })
+                            if (item.originalPath === model.originalPath) {
+                                clickedIndex = i
+                            }
+                        }
+                        globalPreviewModal.openPreviewList(list, clickedIndex)
                     }
                 }
             }

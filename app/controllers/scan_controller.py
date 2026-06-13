@@ -159,22 +159,45 @@ class ScanController(QObject):
             
         if dialog.exec():
             folders = dialog.selectedFiles()
-            added_any = False
+            new_targets = []
             for folder in folders:
                 folder_path = str(Path(folder).resolve())
                 if folder_path not in self._scan_targets:
                     self._scan_targets.append(folder_path)
-                    added_any = True
+                    new_targets.append(folder_path)
                     logger.info(f"Added folder target: {folder_path}")
-            
-            if added_any:
+
+            if new_targets:
                 self.scanTargetsChanged.emit()
                 self.currentFolderChanged.emit()
+                self.startPartialScan(new_targets)  # Only scan the new folders
 
     @Slot()
     def addFileTargets(self):
-        """Deprecated: Now forwards to unified addFolderTarget for both files and folders."""
-        self.addFolderTarget()
+        """Open a multi-select image file picker and add chosen files to scan targets."""
+        dialog = QFileDialog()
+        dialog.setWindowTitle("Select Image Files to Add")
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+        dialog.setNameFilter(
+            "Images (*.jpg *.jpeg *.png *.webp *.heic *.heif *.bmp *.tiff *.tif *.gif *.raw *.cr2 *.nef *.arw *.dng)"
+        )
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+
+        if dialog.exec():
+            files = dialog.selectedFiles()
+            new_targets = []
+            for file_path in files:
+                resolved = str(Path(file_path).resolve())
+                if resolved not in self._scan_targets:
+                    self._scan_targets.append(resolved)
+                    new_targets.append(resolved)
+                    logger.info(f"Added file target: {resolved}")
+
+            if new_targets:
+                self.scanTargetsChanged.emit()
+                self.currentFolderChanged.emit()
+                self.startPartialScan(new_targets)  # Only scan the new files
+
 
     @Slot(str)
     def removeTarget(self, path: str):
@@ -196,7 +219,7 @@ class ScanController(QObject):
 
     @Slot()
     def startScan(self):
-        """Launch an async scan of the currently selected targets."""
+        """Launch a full async scan — clears DB and rescans all targets."""
         if not self._scan_targets:
             logger.warning("No targets selected — cannot start scan.")
             return
@@ -209,28 +232,46 @@ class ScanController(QObject):
         from app.database.connection import db
         db.clear_database()
 
-        # Reset progress state
+        self._start_scan_worker(self._scan_targets, partial=False)
+
+    @Slot(list)
+    def startPartialScan(self, new_targets: list):
+        """Scan only the newly added targets, appending to the existing grid without clearing the DB."""
+        if not new_targets:
+            return
+
+        if self._scan_state == "scanning":
+            logger.warning("Scan already in progress — queuing partial scan after current finishes.")
+            return
+
+        logger.info(f"Starting partial scan for new targets: {new_targets}")
+        self._start_scan_worker(new_targets, partial=True)
+
+    def _start_scan_worker(self, targets: list, partial: bool = False):
+        """Internal: set up and launch a ScanWorker for the given targets."""
+        # Reset progress state (keep existing scanned count if partial)
         self._scan_state = "scanning"
         self._scan_progress = 0
-        self._scanned_count = 0
-        self._total_images = 0
+        if not partial:
+            self._scanned_count = 0
+            self._total_images = 0
         self.scanStateChanged.emit()
         self.scanProgressChanged.emit()
-        self.scannedCountChanged.emit()
-        self.totalImagesChanged.emit()
-        self.scanStarted.emit()
+        if not partial:
+            self.scannedCountChanged.emit()
+            self.totalImagesChanged.emit()
+            self.scanStarted.emit()
 
-
-        # Create worker and connect signals
-        self._worker = ScanWorker(self._scan_service, self._scan_targets)
+        self._worker = ScanWorker(self._scan_service, targets)
         self._worker.signals.image_ready.connect(self._on_image_ready)
-        self._worker.signals.progress.connect(self._on_progress)
+        self._worker.signals.progress.connect(
+            self._on_partial_progress if partial else self._on_progress
+        )
         self._worker.signals.finished.connect(self._on_finished)
         self._worker.signals.error.connect(self._on_error)
 
-        # Submit to thread pool
         QThreadPool.globalInstance().start(self._worker)
-        logger.info(f"Scan started for targets: {self._scan_targets}")
+        logger.info(f"{'Partial' if partial else 'Full'} scan started for targets: {targets}")
 
     @Slot()
     def removeExactDuplicates(self):
@@ -337,9 +378,17 @@ class ScanController(QObject):
         self.imageReady.emit(-1, vm["originalPath"], vm["thumbnailPath"], vm["fileName"])
 
     def _on_progress(self, current: int, total: int):
-        """Update progress properties."""
+        """Update progress for a full scan."""
         self._total_images = total
         self._scan_progress = int((current / total) * 100) if total > 0 else 0
+        self.totalImagesChanged.emit()
+        self.scanProgressChanged.emit()
+
+    def _on_partial_progress(self, current: int, total: int):
+        """Update progress for a partial scan — total counts accumulate on top of existing."""
+        self._total_images = self._scanned_count + total
+        new_progress = int((current / total) * 100) if total > 0 else 0
+        self._scan_progress = new_progress
         self.totalImagesChanged.emit()
         self.scanProgressChanged.emit()
 
