@@ -261,6 +261,208 @@ Rectangle {
                     topPadding: 8
                     bottomPadding: 8
 
+                    // ── Export & End Session ────────────────────────────────
+                    Rectangle {
+                        id: menuItemExportSession
+                        visible: hasScanned || isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        color: exportSessionMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: exportSessionMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "🚀"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Export & End Session"
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Clean, save & return home"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: exportSessionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof cleanupController !== "undefined") {
+                                    cleanupController.commitStagedChanges()
+                                }
+                                if (typeof scanController !== "undefined") {
+                                    var saved = scanController.saveSessionAs()
+                                    if (saved) {
+                                        scanController.clearTargets()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: hasScanned || isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Save Session As... ─────────────────────────────
+                    Rectangle {
+                        id: menuItemSaveSession
+                        visible: hasScanned || isScanning
+                        width: 220
+                        height: visible ? 44 : 0
+                        color: saveSessionMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: saveSessionMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "💾"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Save Session As..."
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Save folders to a file"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: saveSessionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") scanController.saveSessionAs()
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        visible: hasScanned || isScanning
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
+                    // ── Load Session... ────────────────────────────────
+                    Rectangle {
+                        id: menuItemLoadSession
+                        visible: true
+                        width: 220
+                        height: 44
+                        color: loadSessionMouse.containsMouse ? "#2A2A3E" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            spacing: 12
+
+                            Rectangle {
+                                width: 28; height: 28; radius: 8
+                                color: loadSessionMouse.containsMouse ? "#3D2D6A" : "#252535"
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "📂"
+                                    font.pixelSize: 13
+                                }
+                            }
+
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text {
+                                    text: "Load Session..."
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    font.family: Theme.fontFamily
+                                }
+                                Text {
+                                    text: "Resume a saved project"
+                                    color: "#6B6B82"
+                                    font.pixelSize: 10
+                                    font.family: Theme.fontFamily
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            id: loadSessionMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                actionMenu.close()
+                                if (typeof scanController !== "undefined") scanController.loadSession()
+                            }
+                        }
+                    }
+
+                    // Divider
+                    Rectangle {
+                        width: 220; height: 1
+                        color: "#2A2A3A"
+                    }
+
                     // ── Add More Files ─────────────────────────────────
                     Rectangle {
                         id: menuItemAddFiles

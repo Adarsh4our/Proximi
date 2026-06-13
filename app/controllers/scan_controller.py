@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QFileDialog, QAbstractItemView
 
 from pathlib import Path
 import os
+import json
 
 from app.services.scan_service import ScanService
 from app.services.scan_worker import ScanWorker
@@ -216,6 +217,62 @@ class ScanController(QObject):
             self.scanTargetsChanged.emit()
             self.currentFolderChanged.emit()
             logger.info("Cleared all scan targets.")
+
+    @Slot(result=bool)
+    def saveSessionAs(self):
+        """Save current scan targets to a file."""
+        if not self._scan_targets:
+            logger.warning("No targets to save.")
+            return False
+            
+        dialog = QFileDialog()
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        file_path, _ = dialog.getSaveFileName(
+            None,
+            "Save Session As...",
+            "",
+            "Proximi Session (*.pxm *.json);;All Files (*)"
+        )
+        if file_path:
+            try:
+                if not file_path.endswith('.pxm') and not file_path.endswith('.json'):
+                    file_path += '.pxm'
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump({"version": 1, "targets": self._scan_targets}, f, indent=4)
+                logger.info(f"Saved session to {file_path}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to save session: {e}")
+                return False
+        return False
+
+    @Slot()
+    def loadSession(self):
+        """Load scan targets from a file and start scanning."""
+        dialog = QFileDialog()
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        file_path, _ = dialog.getOpenFileName(
+            None,
+            "Load Session...",
+            "",
+            "Proximi Session (*.pxm *.json);;All Files (*)"
+        )
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    targets = data.get("targets", [])
+                    if targets:
+                        self._scan_targets = targets
+                        self.scanTargetsChanged.emit()
+                        self.currentFolderChanged.emit()
+                        logger.info(f"Loaded session from {file_path} with {len(targets)} targets")
+                        self.startScan()
+                    else:
+                        logger.warning(f"No targets found in session file {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to load session: {e}")
+
 
     @Slot()
     def startScan(self):

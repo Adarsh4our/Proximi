@@ -257,6 +257,42 @@ Item {
                     }
                 }
             }
+            // Load Session Button
+            Rectangle {
+                id: loadSessionBtn
+                Layout.preferredWidth: 160
+                Layout.preferredHeight: 44
+                radius: 22
+                color: loadSessionBtnMouse.containsMouse ? Theme.bgHover : "transparent"
+                border.color: loadSessionBtnMouse.containsMouse ? Theme.accent : Theme.border
+                border.width: 1
+                scale: loadSessionBtnMouse.containsMouse ? 1.03 : 1.0
+                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    Text { text: "📂"; font.pixelSize: 16 }
+                    Text {
+                        text: "Load Session"
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
+                }
+
+                MouseArea {
+                    id: loadSessionBtnMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof scanController !== "undefined") {
+                            scanController.loadSession()
+                        }
+                    }
+                }
+            }
         }
 
         // ── Action Buttons Row (shown when targets DO exist) ─────

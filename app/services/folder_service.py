@@ -20,12 +20,7 @@ class FolderService:
             self.base_dir / "logs",
         ]
 
-    @property
-    def _persistence_enabled(self) -> bool:
-        """True when the user has opted-in to session persistence."""
-        if self.settings_service is None:
-            return False
-        return bool(self.settings_service.get("session_persistence", False))
+
 
     def ensure_data_directories(self) -> None:
         """Creates required application directories if they don't exist."""
@@ -37,20 +32,9 @@ class FolderService:
                 logger.error(f"Failed to create directory {directory}: {e}")
 
     def cleanup_startup(self) -> None:
-        """Cleans up data directories on startup.
-
-        Skipped when session persistence is enabled — the user's previous
-        scan data is intentionally kept between launches.
-        """
-        if self._persistence_enabled:
-            logger.info(
-                "Session persistence is ON — skipping startup cleanup. "
-                "Previous session data will be restored."
-            )
-            return
-
+        """Cleans up data directories on startup."""
         import shutil
-        logger.info("Performing startup cleanup (persistence OFF)...")
+        logger.info("Performing startup cleanup...")
         for directory in self.required_dirs:
             if directory.name == "logs":
                 continue  # Skip logs — may be locked by the running logger

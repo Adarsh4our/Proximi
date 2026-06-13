@@ -17,8 +17,15 @@ ApplicationWindow {
     color: Theme.bgApp
     font.family: Theme.fontFamily
 
-
-
+    // ── Intercept window close to ask about saving session ──────────
+    onClosing: function(close) {
+        if (typeof scanController !== "undefined" && scanController.scannedCount > 0) {
+            close.accepted = false
+            closeConfirmDialog.open()
+        } else {
+            close.accepted = true
+        }
+    }
     // ── Image data model ─────────────────────────────────────────────
     ListModel {
         id: imageListModel
@@ -60,11 +67,7 @@ ApplicationWindow {
 
     // ── Startup initialization ───────────────────────────────────────
     Component.onCompleted: {
-        // M12: Restore previous session if persistence is enabled.
-        // loadPersistedSession() is a no-op when persistence is OFF.
-        if (typeof scanController !== "undefined") {
-            scanController.loadPersistedSession()
-        }
+        // App starts fresh by default
     }
 
     // ── Keyboard shortcut: Ctrl+Shift+D → toggle debug panel ────────
@@ -199,5 +202,135 @@ ApplicationWindow {
                 settingsController.completeOnboarding()
         }
     }
-}
+    // ── Close Confirmation Dialog ────────────────────────────────────
+    Popup {
+        id: closeConfirmDialog
+        anchors.centerIn: parent
+        width: 480
+        height: 240
+        modal: true
+        focus: true
+        closePolicy: Popup.NoAutoClose
 
+        background: Rectangle {
+            color: Theme.bgCard
+            radius: Theme.radiusL
+            border.color: Theme.border
+            border.width: 1
+
+            layer.enabled: true
+            layer.effect: null
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Theme.spaceL
+            spacing: Theme.spaceM
+
+            Text {
+                text: "Save Session?"
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontHeader
+                font.bold: true
+                Layout.fillWidth: true
+            }
+
+            Text {
+                text: "Do you want to save the current folders to a file so you can load them later?"
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            Item { Layout.fillHeight: true } // spacer
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spaceM
+
+                // Cancel Button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    radius: Theme.radiusS
+                    color: cancelMouse.containsMouse ? Theme.bgHover : "transparent"
+                    border.color: Theme.border
+                    border.width: 1
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Cancel"
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
+                    MouseArea {
+                        id: cancelMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: closeConfirmDialog.close()
+                    }
+                }
+
+                // Discard Button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    radius: Theme.radiusS
+                    color: discardMouse.containsMouse ? "#3A1B1B" : "transparent"
+                    border.color: "#5A2B2B"
+                    border.width: 1
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Discard & Exit"
+                        color: "#FF5555"
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
+                    MouseArea {
+                        id: discardMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            Qt.quit()
+                        }
+                    }
+                }
+
+                // Save Button
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 40
+                    radius: Theme.radiusS
+                    color: saveMouse.containsMouse ? Theme.accentHover : Theme.accent
+                    
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Save & Exit"
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.bold: true
+                    }
+                    MouseArea {
+                        id: saveMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (typeof scanController !== "undefined") {
+                                var saved = scanController.saveSessionAs()
+                                if (saved) {
+                                    Qt.quit()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
