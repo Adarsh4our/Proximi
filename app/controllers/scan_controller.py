@@ -143,8 +143,6 @@ class ScanController(QObject):
         self.addFolderTarget()
 
     @Slot()
-    @Slot()
-    @Slot()
     def addFolderTarget(self):
         """Open native-looking folder picker and allow multiple directory selection."""
         dialog = QFileDialog()
@@ -211,12 +209,23 @@ class ScanController(QObject):
 
     @Slot()
     def clearTargets(self):
-        """Clear all targets."""
-        if self._scan_targets:
-            self._scan_targets = []
-            self.scanTargetsChanged.emit()
-            self.currentFolderChanged.emit()
-            logger.info("Cleared all scan targets.")
+        """Clear all targets and fully reset app state back to the empty welcome screen."""
+        self._scan_targets = []
+        self._scan_state = "empty"
+        self._scan_progress = 0
+        self._scanned_count = 0
+        self._total_images = 0
+        self._has_scanned_current_folder = False
+        self.scanTargetsChanged.emit()
+        self.currentFolderChanged.emit()
+        self.scanStateChanged.emit()
+        self.scanProgressChanged.emit()
+        self.scannedCountChanged.emit()
+        self.totalImagesChanged.emit()
+        self.hasScannedCurrentFolderChanged.emit()
+        # Clear the image grid in QML
+        self.scanStarted.emit()
+        logger.info("Cleared all scan targets and reset to empty state.")
 
     @Slot(result=bool)
     def saveSessionAs(self):

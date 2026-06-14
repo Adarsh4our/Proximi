@@ -17,8 +17,15 @@ ApplicationWindow {
     color: Theme.bgApp
     font.family: Theme.fontFamily
 
+    // Used to bypass the save-on-close guard when the user explicitly chose to exit
+    property bool forceClose: false
+
     // ── Intercept window close to ask about saving session ──────────
     onClosing: function(close) {
+        if (forceClose) {
+            close.accepted = true
+            return
+        }
         if (typeof scanController !== "undefined" && scanController.scannedCount > 0) {
             close.accepted = false
             closeConfirmDialog.open()
@@ -296,6 +303,8 @@ ApplicationWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
+                            closeConfirmDialog.close()
+                            root.forceClose = true
                             Qt.quit()
                         }
                     }
@@ -324,6 +333,8 @@ ApplicationWindow {
                             if (typeof scanController !== "undefined") {
                                 var saved = scanController.saveSessionAs()
                                 if (saved) {
+                                    closeConfirmDialog.close()
+                                    root.forceClose = true
                                     Qt.quit()
                                 }
                             }

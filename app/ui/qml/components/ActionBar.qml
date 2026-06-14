@@ -76,7 +76,7 @@ Rectangle {
 
         Button {
             text: "Execute Cleanup"
-            onClicked: cleanupController.executeCleanup()
+            onClicked: { if (typeof cleanupController !== "undefined") cleanupController.executeCleanup() }
             enabled: typeof cleanupController !== "undefined" && cleanupController.rejectedCount > 0
             
             contentItem: Text {

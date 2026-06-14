@@ -6,8 +6,8 @@ from app.utils.logger import logger
 class FolderService:
     """Service to manage necessary application directories.
 
-    Accepts an optional SettingsService reference. When session persistence
-    is enabled, startup/exit cleanup is skipped so data survives restarts.
+    Always cleans up data directories on startup and exit to ensure
+    a fresh state. Session data is saved/loaded via .pxm files.
     """
 
     def __init__(self, settings_service=None):
@@ -53,24 +53,12 @@ class FolderService:
         shutil.rmtree(faces_dir, ignore_errors=True)
 
     def cleanup_data_directory(self) -> None:
-        """Deletes the entire data directory on app exit.
-
-        Skipped when session persistence is enabled — only closes DB handles
-        gracefully so data is available on next launch.
-        """
+        """Closes DB handles and deletes the temporary data directory on app exit."""
         from app.database.connection import db
         from app.utils.logger import shutdown_logger
 
-        if self._persistence_enabled:
-            logger.info(
-                "Session persistence is ON — retaining session data on exit."
-            )
-            db.close_database()
-            shutdown_logger()
-            return
-
         import shutil
-        logger.info("Initiating session data cleanup (persistence OFF)...")
+        logger.info("Initiating session data cleanup on exit...")
         db.close_database()
         shutdown_logger()
 
@@ -79,3 +67,4 @@ class FolderService:
             print(f"Cleaned up {self.base_dir} directory.")
         except Exception as e:
             print(f"Failed to clean up {self.base_dir}: {e}")
+

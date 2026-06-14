@@ -9,7 +9,7 @@ Rectangle {
     
     // Properties to read from controllers
     property int totalGroups: typeof similarityController !== "undefined" ? similarityController.groupCount : 0
-    property int totalDeleted: typeof debugController !== "undefined" ? debugController.metrics.cleanupDeleted || 0 : 0
+    property int totalDeleted: typeof cleanupController !== "undefined" ? cleanupController.totalDeleted : 0
     property bool canUndo: typeof cleanupController !== "undefined" ? cleanupController.canUndo : false
 
     ColumnLayout {

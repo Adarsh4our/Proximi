@@ -298,6 +298,7 @@ class CleanupController(QObject):
                         "width": meta["width"],
                         "height": meta["height"],
                         "file_size": meta["file_size"],
+                        "created_at": meta.get("created_at"),
                         "modified_at": meta["modified_at"],
                         "thumbnail_path": meta["thumbnail_path"],
                         "scan_session_id": meta["scan_session_id"],
@@ -327,8 +328,12 @@ class CleanupController(QObject):
             if self._debug_service:
                 self._debug_service.undo_executed(restored_count)
                 
-            # Navigate back to the previous group
+            # Navigate back to the previous group and refresh view
+            prev_idx = self._similarity_controller.currentGroupIndex
             self._similarity_controller.previousGroup()
+            # If previousGroup() was a no-op (at index 0), still refresh the group data
+            if self._similarity_controller.currentGroupIndex == prev_idx:
+                self._similarity_controller.currentGroupDataChanged.emit()
             
         except Exception as e:
             logger.error(f"Undo failed: {e}")

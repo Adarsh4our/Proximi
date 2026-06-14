@@ -97,8 +97,11 @@ class SimilarityController(QObject):
         if self._debug_service:
             self._debug_service.similarity_started()
 
-        # Assuming latest scan session ID is 1 for now (could be fetched from ScanController)
-        session_id = 1 
+        # Fetch the latest completed scan session ID dynamically
+        from app.database.image_repository import ImageRepository
+        repo = ImageRepository()
+        session_id = repo.get_latest_scan_session_id() or 1
+
         
         # Read thresholds from settings controller
         phash_t = 12

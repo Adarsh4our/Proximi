@@ -320,6 +320,9 @@ Rectangle {
                                 if (typeof scanController !== "undefined") {
                                     var saved = scanController.saveSessionAs()
                                     if (saved) {
+                                        if (typeof similarityController !== "undefined") {
+                                            similarityController.resetState()
+                                        }
                                         scanController.clearTargets()
                                     }
                                 }
@@ -900,7 +903,7 @@ Rectangle {
             Button {
                 id: commitBtn
                 text: "Apply Changes"
-                onClicked: cleanupController.commitStagedChanges()
+                onClicked: { if (typeof cleanupController !== "undefined") cleanupController.commitStagedChanges() }
                 background: Rectangle {
                     color: commitBtn.hovered ? "#059669" : "#10B981" // Green
                     radius: Theme.radiusL
@@ -920,7 +923,7 @@ Rectangle {
             Button {
                 id: discardBtn
                 text: "Discard"
-                onClicked: cleanupController.clearStagedChanges()
+                onClicked: { if (typeof cleanupController !== "undefined") cleanupController.clearStagedChanges() }
                 background: Rectangle {
                     color: discardBtn.hovered ? Theme.bgHover : "transparent"
                     border.color: discardBtn.hovered ? Theme.accentGlow : Theme.border

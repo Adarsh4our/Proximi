@@ -164,6 +164,24 @@ class ImageRepository:
         finally:
             session.close()
 
+    def get_latest_scan_session_id(self) -> Optional[int]:
+        """Return the ID of the most recent completed scan session.
+
+        Returns None if no completed session exists.
+        """
+        session: Session = db.SessionLocal()
+        try:
+            latest = (
+                session.query(ScanSession)
+                .filter_by(status="completed")
+                .order_by(ScanSession.id.desc())
+                .first()
+            )
+            return latest.id if latest else None
+        finally:
+            session.close()
+
+
 
 
     def insert_image_with_id(self, image_data: dict) -> Optional[Image]:
