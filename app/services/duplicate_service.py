@@ -7,12 +7,19 @@ from app.database.image_repository import ImageRepository
 from app.services.trash_service import TrashService
 from app.utils.logger import logger
 
-# Maximum hamming distance between two 64-bit pHashes to consider images "the same
-# content at different quality levels".
-#   0-2  bits differ → same scene, different JPEG quality / slight compression
-#   3-10 bits differ → noticeably different (crop, filter, color grade)
-# A distance of 2 maps to ~96.9 % bit-similarity (≥ 98 % of the 64-bit signal agrees).
-PHASH_NEAR_DUPLICATE_THRESHOLD = 2
+# Maximum hamming distance between two 64-bit pHashes to consider images near-duplicates.
+#
+#   0     → bit-for-bit identical hash
+#   1-2   → same file re-saved with minor compression change
+#   3-5   → same scene / burst shot (tiny camera movement, auto-exposure flicker)
+#   6-10  → noticeable differences (crop, filter, colour grade)
+#  >10    → clearly different images
+#
+# We use 5 so that burst shots taken milliseconds apart are caught, while still
+# being strict enough to avoid false positives on genuinely different photos.
+# Hashes are always computed from the ORIGINAL file (not thumbnails) so that
+# JPEG compression artefacts in the thumbnail don't inflate the distance.
+PHASH_NEAR_DUPLICATE_THRESHOLD = 5
 
 
 class DuplicateService:
@@ -163,12 +170,20 @@ class DuplicateService:
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _compute_hashes(self, img) -> Tuple[Optional[str], Optional[str]]:
-        """Compute pHash + dHash for an image, preferring the thumbnail path."""
-        path = (
-            img.thumbnail_path
-            if img.thumbnail_path and Path(img.thumbnail_path).exists()
-            else img.original_path
-        )
+        """Compute pHash + dHash from the ORIGINAL file.
+
+        We deliberately avoid the thumbnail here: thumbnails are JPEG-compressed
+        re-encodes of the source, so two near-identical originals can produce
+        thumbnails with enough artefact differences to push their hamming distance
+        above our near-duplicate threshold.
+        """
+        path = img.original_path
+        if not path or not Path(path).exists():
+            # Fall back to thumbnail only if the original is genuinely missing
+            path = img.thumbnail_path
+        if not path or not Path(path).exists():
+            logger.warning(f"No accessible file for image {img.id} — skipping hash.")
+            return None, None
         try:
             with PILImage.open(path) as pil_img:
                 pil_img = pil_img.convert("RGB")
