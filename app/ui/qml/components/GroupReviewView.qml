@@ -114,6 +114,7 @@ Item {
                             for (var i = 0; i < reviewRoot.currentGroup.images.length; i++) {
                                 list.push({
                                     source: reviewRoot.currentGroup.images[i].originalPath,
+                                    thumbnailPath: reviewRoot.currentGroup.images[i].thumbnailPath || "",
                                     fileName: reviewRoot.currentGroup.images[i].fileName || ""
                                 })
                             }

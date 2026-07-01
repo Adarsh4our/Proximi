@@ -13,13 +13,34 @@ FocusScope {
     property string imageFileName: ""
 
     // Optional list-based navigation
-    // Pass an array of { source, fileName } objects and a start index
+    // Pass an array of { source, thumbnailPath, fileName } objects and a start index
     property var imageList: []
     property int currentIndex: 0
 
+    // ── HEIC / Qt-incompatible format handling ────────────────────────
+    // Qt's QML Image element cannot render raw .heic/.heif files on Windows.
+    // During scanning a 1200px WebP preview is generated alongside the small
+    // thumbnail (path = thumbnailPath with '.webp' → '_preview.webp').
+    // This function returns a Qt-displayable path for any image source.
+    function resolveDisplaySource(src, thumbPath) {
+        if (!src) return ""
+        var lower = src.toLowerCase()
+        var isHeic = lower.endsWith(".heic") || lower.endsWith(".heif")
+                  || lower.endsWith(".heics") || lower.endsWith(".heifs") || lower.endsWith(".hif")
+        if (!isHeic) return src
+
+        // Try the large WebP preview first (generated during scan)
+        if (thumbPath && thumbPath.length > 0) {
+            var previewPath = thumbPath.replace(/\.webp$/i, "_preview.webp")
+            return previewPath
+        }
+        // Last resort: return the thumbnail itself (256px, at least visible)
+        return thumbPath || src
+    }
+
     // ── Open / Close ──────────────────────────────────────────────────
-    function openPreview(src, fileName) {
-        imageSource = src || ""
+    function openPreview(src, fileName, thumbPath) {
+        imageSource = resolveDisplaySource(src, thumbPath || "")
         imageFileName = fileName || extractFileName(src)
         imageList = []      // Single-image mode
         currentIndex = 0
@@ -31,8 +52,9 @@ FocusScope {
         imageList = list || []
         currentIndex = Math.max(0, Math.min(startIndex || 0, list.length - 1))
         if (list.length > 0) {
-            imageSource = list[currentIndex].source || ""
-            imageFileName = list[currentIndex].fileName || extractFileName(imageSource)
+            var item = list[currentIndex]
+            imageSource = resolveDisplaySource(item.source || "", item.thumbnailPath || "")
+            imageFileName = item.fileName || extractFileName(item.source || "")
         }
         if (typeof flickable !== "undefined") flickable.zoomScale = 1.0
         _show()
@@ -72,8 +94,9 @@ FocusScope {
         
         // Manual crossfade logic
         previewImage.opacity = 0.5
-        imageSource = imageList[currentIndex].source || ""
-        imageFileName = imageList[currentIndex].fileName || extractFileName(imageSource)
+        var item = imageList[currentIndex]
+        imageSource = resolveDisplaySource(item.source || "", item.thumbnailPath || "")
+        imageFileName = item.fileName || extractFileName(item.source || "")
         previewImage.opacity = 1.0
     }
 

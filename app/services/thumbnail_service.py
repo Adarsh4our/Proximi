@@ -13,9 +13,17 @@ except ImportError:
 
 from app.utils.logger import logger
 
-# Maximum thumbnail dimension (width or height)
+# Maximum thumbnail dimension (width or height) — used for the grid
 THUMBNAIL_MAX_SIZE = 256
 THUMBNAIL_QUALITY = 80   # 80 vs 85: ~15% smaller cache, imperceptible at 256px
+
+# Formats that Qt/QML cannot display natively on Windows.
+# For these we generate a large WebP preview so the preview modal works.
+HEIC_EXTENSIONS = {".heic", ".heif", ".heics", ".heifs", ".hif"}
+
+# Max dimension for the large preview (used in the preview modal for HEIC files)
+PREVIEW_MAX_SIZE = 1200
+PREVIEW_QUALITY = 85
 
 
 class ThumbnailService:
@@ -107,6 +115,43 @@ class ThumbnailService:
             # Clean up partial file if it was created
             if cache_path.exists():
                 cache_path.unlink(missing_ok=True)
+            return None
+
+    def generate_heic_preview(self, source_path: str, modified_timestamp: float) -> Optional[str]:
+        """Generate a high-resolution (1200px max) WebP preview for HEIC/HEIF files.
+
+        Qt's Image element cannot load raw .heic files on Windows, so for HEIC
+        files we generate a large WebP that the preview modal can display instead.
+
+        The preview is stored at ``<cache_key>_preview.webp`` next to the regular
+        thumbnail so QML can derive its path without any extra DB columns.
+
+        Returns the preview path, or None on failure.
+        """
+        ext = Path(source_path).suffix.lower()
+        if ext not in HEIC_EXTENSIONS:
+            return None  # Only needed for formats Qt can't display
+
+        cache_key = self._build_cache_key(source_path, modified_timestamp)
+        preview_path = self.cache_dir / f"{cache_key}_preview.webp"
+
+        if preview_path.exists():
+            return str(preview_path)
+
+        try:
+            with PILImage.open(source_path) as img:
+                img = ImageOps.exif_transpose(img)
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                img.thumbnail((PREVIEW_MAX_SIZE, PREVIEW_MAX_SIZE), PILImage.LANCZOS)
+                preview_path.parent.mkdir(parents=True, exist_ok=True)
+                img.save(str(preview_path), "WEBP", quality=PREVIEW_QUALITY, method=4)
+            logger.debug(f"HEIC large preview generated: {Path(source_path).name}")
+            return str(preview_path)
+        except Exception as e:
+            logger.warning(f"Failed to generate HEIC preview for '{source_path}': {e}")
+            if preview_path.exists():
+                preview_path.unlink(missing_ok=True)
             return None
 
     def get_image_dimensions(self, source_path: str) -> tuple[Optional[int], Optional[int]]:

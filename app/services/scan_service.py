@@ -181,6 +181,13 @@ class ScanService:
                 original_path, modified_timestamp
             )
 
+            # ── Step 3b: Large preview for HEIC/HEIF ──────────────────
+            # Qt/QML cannot render raw .heic files on Windows, so we generate
+            # a 1200px WebP preview that the preview modal can display instead.
+            # Path convention: <cache_key>_preview.webp (derived from thumbnail_path).
+            if image_path.suffix.lower() in {".heic", ".heif", ".heics", ".heifs", ".hif"}:
+                self.thumbnail_service.generate_heic_preview(original_path, modified_timestamp)
+
             # ── Step 4: Update DB with thumbnail path ─────────────────
             if thumbnail_path:
                 update_data = {

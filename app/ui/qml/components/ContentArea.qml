@@ -101,6 +101,7 @@ Item {
                             var item = m.get(i)
                             list.push({
                                 source: item.originalPath || "",
+                                thumbnailPath: item.thumbnailPath || "",
                                 fileName: item.fileName || ""
                             })
                             if (item.originalPath === model.originalPath) {
